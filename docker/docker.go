@@ -45,10 +45,10 @@ func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resou
 	return &b, nil
 }
 
-func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies, conf resource.Config) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.logger.Debug("Reconfiguring Docker Manager Module")
+func (dc *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies, conf resource.Config) error {
+	dc.mu.Lock()
+	defer dc.mu.Unlock()
+	dc.logger.Debug("Reconfiguring Docker Manager Module")
 
 	newConf, err := resource.NativeConfig[*Config](conf)
 	if err != nil {
@@ -56,7 +56,7 @@ func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies,
 	}
 
 	// In case the module has changed name
-	b.Named = conf.ResourceName().AsNamed()
+	dc.Named = conf.ResourceName().AsNamed()
 
 	// Check if the image exists already?
 	// If image exists and is running, return
@@ -65,24 +65,24 @@ func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies,
 	// Start image
 
 	// Close the existing image
-	if b.image != nil {
-		b.image.Close()
+	if dc.image != nil {
+		dc.image.Close()
 	}
 
-	b.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, b.logger, b.cancelCtx, b.cancelFunc)
-	if !b.image.Exists() {
-		err := b.image.Pull()
+	dc.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, dc.logger, dc.cancelCtx, dc.cancelFunc)
+	if !dc.image.Exists() {
+		err := dc.image.Pull()
 		if err != nil {
 			return err
 		}
-		return b.image.Start()
+		return dc.image.Start()
 	} else {
-		isRunning, err := b.image.IsRunning()
+		isRunning, err := dc.image.IsRunning()
 		if err != nil {
 			return err
 		}
 		if !isRunning {
-			return b.image.Start()
+			return dc.image.Start()
 		}
 	}
 
@@ -90,8 +90,8 @@ func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies,
 }
 
 // Readings implements sensor.Sensor.
-func (s *DockerConfig) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-	if s.image == nil {
+func (dc *DockerConfig) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
+	if dc.image == nil {
 		return map[string]interface{}{
 			"isRunning":  false,
 			"repoDigest": "",
@@ -100,28 +100,28 @@ func (s *DockerConfig) Readings(ctx context.Context, extra map[string]interface{
 		}, nil
 	}
 
-	imageId, err := s.image.GetImageId()
+	imageId, err := dc.image.GetImageId()
 	if err != nil {
 		return nil, err
 	}
-	isRunning, err := s.image.IsRunning()
+	isRunning, err := dc.image.IsRunning()
 	if err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{
-		"repoDigest": s.image.RepoDigest,
-		"imageTag":   s.image.Tag,
+		"repoDigest": dc.image.RepoDigest,
+		"imageTag":   dc.image.Tag,
 		"imageId":    imageId,
 		"isRunning":  isRunning,
 	}, nil
 }
 
-func (s *DockerConfig) Close(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.logger.Debug("Closing Docker Manager Module")
-	if s.image != nil {
-		return s.image.Close()
+func (dc *DockerConfig) Close(ctx context.Context) error {
+	dc.mu.Lock()
+	defer dc.mu.Unlock()
+	dc.logger.Debug("Closing Docker Manager Module")
+	if dc.image != nil {
+		return dc.image.Close()
 	}
 	return nil
 }

@@ -124,7 +124,7 @@ func (image *DockerImage) Stop() error {
 
 func (image *DockerImage) Remove() error {
 	image.logger.Debugf("Removing image %s %s", image.Name, image.RepoDigest)
-	imageId, err := image.getImageId()
+	imageId, err := image.GetImageId()
 	if err != nil {
 		image.logger.Warn("Unable to delete previous image.")
 		return err
@@ -147,7 +147,7 @@ func (image *DockerImage) Remove() error {
 }
 
 func (image *DockerImage) getContainerId() (string, error) {
-	imageId, err := image.getImageId()
+	imageId, err := image.GetImageId()
 	if err != nil {
 		image.logger.Warn("Unable to get ImageId.")
 		return "", err
@@ -170,7 +170,7 @@ func (image *DockerImage) getContainerId() (string, error) {
 	return containerId, nil
 }
 
-func (image *DockerImage) getImageId() (string, error) {
+func (image *DockerImage) GetImageId() (string, error) {
 	proc := exec.Command("docker", "image", "inspect", "--format", "'{{json .Id}}'", fmt.Sprintf("%s@%s", image.Name, image.RepoDigest))
 	outputBytes, err := proc.Output()
 	if err != nil {
@@ -185,6 +185,11 @@ func (image *DockerImage) getImageId() (string, error) {
 	id := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(output, "\"", ""), "'", ""))
 	image.logger.Debugf("ImageId: %s", id)
 	return id, nil
+}
+
+func (image *DockerImage) Close() error {
+	image.logger.Debugf("Closing image %s %s", image.Name, image.RepoDigest)
+	return image.Stop()
 }
 
 func NewDockerImage(name string, tag string, repoDigest string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {

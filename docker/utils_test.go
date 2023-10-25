@@ -32,7 +32,7 @@ func TestImagePull(t *testing.T) {
 
 	assert.NoError(t, image.Pull())
 
-	imageId, err := image.getImageId()
+	imageId, err := image.GetImageId()
 	assert.NoError(t, err)
 	logger.Infof("ImageID: %v", imageId)
 
@@ -52,7 +52,7 @@ func TestImageRemove(t *testing.T) {
 
 	assert.NoError(t, image.Pull())
 
-	imageId, err := image.getImageId()
+	imageId, err := image.GetImageId()
 	assert.NoError(t, err)
 	logger.Infof("ImageID: %v", imageId)
 
@@ -70,7 +70,7 @@ func TestGetImageId(t *testing.T) {
 	image := NewDockerImage("mcr.microsoft.com/dotnet/samples", "latest", "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", logger, cancelCtx, cancelFunc)
 	assert.True(t, image.Exists())
 
-	imageId, err := image.getImageId()
+	imageId, err := image.GetImageId()
 	assert.NoError(t, err)
 	logger.Infof("ImageID: %v", imageId)
 }

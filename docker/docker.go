@@ -2,7 +2,6 @@ package docker
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -18,8 +17,7 @@ type DockerConfig struct {
 	logger     golog.Logger
 	cancelCtx  context.Context
 	cancelFunc func()
-	imageUrl   string
-	dockerPath string
+	image      *DockerImage
 }
 
 func init() {
@@ -65,20 +63,26 @@ func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies,
 	// If image exists and is not running, start it.
 	// If image does not exist, pull it
 	// Start image
-	image := NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, b.logger, b.cancelCtx, b.cancelFunc)
-	if !image.Exists() {
-		err := image.Pull()
+
+	// Close the existing image
+	if b.image != nil {
+		b.image.Close()
+	}
+
+	b.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, b.logger, b.cancelCtx, b.cancelFunc)
+	if !b.image.Exists() {
+		err := b.image.Pull()
 		if err != nil {
 			return err
 		}
-		return image.Start()
+		return b.image.Start()
 	} else {
-		isRunning, err := image.IsRunning()
+		isRunning, err := b.image.IsRunning()
 		if err != nil {
 			return err
 		}
 		if !isRunning {
-			return image.Start()
+			return b.image.Start()
 		}
 	}
 
@@ -86,18 +90,38 @@ func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies,
 }
 
 // Readings implements sensor.Sensor.
-func (*DockerConfig) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-	foo := map[string]interface{}{
-		"isRunning":      true,
-		"sha256":         "",
-		"container_path": "",
+func (s *DockerConfig) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
+	if s.image == nil {
+		return map[string]interface{}{
+			"isRunning":  false,
+			"repoDigest": "",
+			"imageTag":   "",
+			"imageId":    "",
+		}, nil
 	}
-	return foo, nil
+
+	imageId, err := s.image.GetImageId()
+	if err != nil {
+		return nil, err
+	}
+	isRunning, err := s.image.IsRunning()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"repoDigest": s.image.RepoDigest,
+		"imageTag":   s.image.Tag,
+		"imageId":    imageId,
+		"isRunning":  isRunning,
+	}, nil
 }
 
 func (s *DockerConfig) Close(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return errors.New("not implemented")
-	// TODO: Shut down the container?
+	s.logger.Debug("Closing Docker Manager Module")
+	if s.image != nil {
+		return s.image.Close()
+	}
+	return nil
 }

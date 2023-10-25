@@ -48,17 +48,77 @@ func (image *DockerImage) Pull() error {
 	return nil
 }
 
-func (image *DockerImage) IsRunning() bool {
+func (image *DockerImage) IsRunning() (bool, error) {
 	image.logger.Debugf("Checking if image %s %s is running", image.Name, image.RepoDigest)
-	return false
+	proc := exec.Command("docker", "ps", "-a")
+	outputBytes, err := proc.Output()
+	if err != nil {
+		exitError := err.(*exec.ExitError)
+		if exitError != nil && exitError.Stderr != nil {
+			image.logger.Errorf("Output: %s", string(exitError.Stderr))
+		}
+		image.logger.Error(err)
+	}
+	outputString := string(outputBytes)
+	image.logger.Debugf("Output: %s", outputString)
+
+	containerId, err := image.getContainerId()
+	if err != nil {
+		image.logger.Warn("Unable to get containerId.")
+		return false, err
+	}
+	lines := strings.Split(outputString, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, containerId) && strings.Contains(line, "Up") {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (image *DockerImage) Start() error {
 	image.logger.Debugf("Starting image %s %s", image.Name, image.RepoDigest)
+	args := make([]string, 0)
+	args = append(args, "run", "--rm", "-d", "-it")
+	args = append(args, fmt.Sprintf("%s@%s", image.Name, image.RepoDigest))
+	// TODO: add support for passing in arguments
+	args = append(args, "bash")
+	proc := exec.Command("docker", args...)
+	outputBytes, err := proc.Output()
+	if err != nil {
+		exitError := err.(*exec.ExitError)
+		if exitError != nil && exitError.Stderr != nil {
+			image.logger.Errorf("Output: %s", string(exitError.Stderr))
+		}
+		image.logger.Error(err)
+	}
+	outputString := string(outputBytes)
+	image.logger.Debugf("Output: %s", outputString)
 	return nil
 }
 
 func (image *DockerImage) Stop() error {
+	image.logger.Debugf("Stopping image %s %s", image.Name, image.RepoDigest)
+
+	containerId, err := image.getContainerId()
+	if err != nil {
+		image.logger.Warn("Unable to get containerId.")
+	}
+
+	proc := exec.Command("docker", "stop", containerId)
+	outputBytes, err := proc.Output()
+	if err != nil {
+		image.logger.Warn("Unable to stop image.")
+		exitError := err.(*exec.ExitError)
+		if exitError != nil && exitError.Stderr != nil {
+			image.logger.Errorf("Output: %s", string(exitError.Stderr))
+		}
+		image.logger.Error(err)
+		return err
+	}
+	outputString := string(outputBytes)
+	image.logger.Debugf("Output: %s", outputString)
 	return nil
 }
 
@@ -84,6 +144,30 @@ func (image *DockerImage) Remove() error {
 	}
 	image.logger.Debugf("Output: %s", string(outputBytes))
 	return nil
+}
+
+func (image *DockerImage) getContainerId() (string, error) {
+	imageId, err := image.getImageId()
+	if err != nil {
+		image.logger.Warn("Unable to get ImageId.")
+		return "", err
+	}
+	// docker container ls --all --filter=ancestor=e4c58958181a --format "{{.ID}}"
+	proc := exec.Command("docker", "container", "ls", "--all", fmt.Sprintf("--filter=ancestor=%s", imageId), "--format", "{{.ID}}")
+	outputBytes, err := proc.Output()
+	if err != nil {
+		image.logger.Warn("Unable to get ContainerId.")
+		exitError := err.(*exec.ExitError)
+		if exitError != nil && exitError.Stderr != nil {
+			image.logger.Errorf("Output: %s", string(exitError.Stderr))
+		}
+		image.logger.Error(err)
+		return "", err
+	}
+
+	containerId := strings.TrimSpace(string(outputBytes))
+	image.logger.Debugf("ContainerId: %s", containerId)
+	return containerId, nil
 }
 
 func (image *DockerImage) getImageId() (string, error) {

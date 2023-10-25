@@ -74,3 +74,31 @@ func TestGetImageId(t *testing.T) {
 	assert.NoError(t, err)
 	logger.Infof("ImageID: %v", imageId)
 }
+
+func TestIsRunning(t *testing.T) {
+	cancelCtx, cancelFunc := context.WithCancel(context.Background())
+	logger := golog.NewTestLogger(t)
+
+	image := NewDockerImage("ubuntu", "latest", "sha256:2b7412e6465c3c7fc5bb21d3e6f1917c167358449fecac8176c6e496e5c1f05f", logger, cancelCtx, cancelFunc)
+	if !image.Exists() {
+		assert.NoError(t, image.Pull(), "Image should be pulled")
+	}
+
+	assert.True(t, image.Exists(), "Image should exist")
+
+	isRunning, err := image.IsRunning()
+	assert.NoError(t, err, "Error should be nil")
+	assert.False(t, isRunning, "Image should not be running")
+
+	assert.NoError(t, image.Start(), "Image should be started")
+
+	isRunning, err = image.IsRunning()
+	assert.NoError(t, err, "Error should be nil")
+	assert.True(t, isRunning, "Image should be running")
+
+	assert.NoError(t, image.Stop(), "Image should be stopped")
+
+	isRunning, err = image.IsRunning()
+	assert.NoError(t, err, "Error should be nil")
+	assert.False(t, isRunning, "Image should not be running")
+}

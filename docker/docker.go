@@ -73,7 +73,11 @@ func (b *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies,
 		}
 		return image.Start()
 	} else {
-		if !image.IsRunning() {
+		isRunning, err := image.IsRunning()
+		if err != nil {
+			return err
+		}
+		if !isRunning {
 			return image.Start()
 		}
 	}

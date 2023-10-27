@@ -10,26 +10,28 @@ import (
 	"github.com/edaniels/golog"
 )
 
-func NewDockerImage(name string, tag string, repoDigest string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
+func NewDockerImage(name string, tag string, repoDigest string, composeFile string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
 	return &DockerImage{
-		mu:         sync.RWMutex{},
-		logger:     logger,
-		cancelCtx:  cancelCtx,
-		cancelFunc: cancelFunc,
-		Name:       name,
-		RepoDigest: repoDigest,
-		Tag:        tag,
+		mu:          sync.RWMutex{},
+		logger:      logger,
+		cancelCtx:   cancelCtx,
+		cancelFunc:  cancelFunc,
+		Name:        name,
+		RepoDigest:  repoDigest,
+		Tag:         tag,
+		ComposeFile: composeFile,
 	}
 }
 
 type DockerImage struct {
-	mu         sync.RWMutex
-	cancelCtx  context.Context
-	cancelFunc context.CancelFunc
-	logger     golog.Logger
-	Name       string
-	RepoDigest string
-	Tag        string
+	mu          sync.RWMutex
+	cancelCtx   context.Context
+	cancelFunc  context.CancelFunc
+	logger      golog.Logger
+	Name        string
+	RepoDigest  string
+	Tag         string
+	ComposeFile string
 }
 
 func (di *DockerImage) Exists() bool {
@@ -104,12 +106,15 @@ func (di *DockerImage) Start() error {
 	di.mu.Lock()
 	defer di.mu.Unlock()
 	di.logger.Debugf("Starting image %s %s", di.Name, di.RepoDigest)
-
 	args := make([]string, 0)
-	args = append(args, "run", "--rm", "-d", "-it")
-	args = append(args, fmt.Sprintf("%s@%s", di.Name, di.RepoDigest))
-	// TODO: add support for passing in arguments
-	args = append(args, "bash")
+	if di.ComposeFile == "" {
+		args = append(args, "run", "--rm", "-d", "-it")
+		args = append(args, fmt.Sprintf("%s@%s", di.Name, di.RepoDigest))
+		// TODO: add support for passing in arguments
+		args = append(args, "bash")
+	} else {
+		args = append(args, "compose", "-f", di.ComposeFile, "up", "-d")
+	}
 	proc := exec.Command("docker", args...)
 	outputBytes, err := proc.Output()
 	if err != nil {

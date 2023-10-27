@@ -2,6 +2,8 @@ package docker
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -28,7 +30,7 @@ func init() {
 }
 
 func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger golog.Logger) (sensor.Sensor, error) {
-	logger.Info("Starting Applied Motion Products ST Motor Driver v0.1")
+	logger.Info("Starting Docker Manager Module v0.1")
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 
 	b := DockerConfig{
@@ -69,7 +71,24 @@ func (dc *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies
 		dc.image.Close()
 	}
 
-	dc.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, dc.logger, dc.cancelCtx, dc.cancelFunc)
+	// delete the old compose file if the new config doesn't have one
+
+	// where to store the compose file? maybe in the DockerImage?
+	// Write the new compose file
+	composeFile := ""
+	if newConf.ComposeFile != nil {
+		composeFile = fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", newConf.ImageName)
+		fs, err := os.OpenFile("/tmp/", os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			return err
+		}
+		defer fs.Close()
+		for _, line := range newConf.ComposeFile {
+			fs.WriteString(fmt.Sprintln(line))
+		}
+	}
+
+	dc.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, composeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
 	if !dc.image.Exists() {
 		err := dc.image.Pull()
 		if err != nil {

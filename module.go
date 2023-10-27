@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/edaniels/golog"
-	"go.viam.com/rdk/components/board"
+	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/module"
 	"go.viam.com/utils"
 
@@ -21,7 +21,7 @@ func mainWithArgs(ctx context.Context, args []string, logger golog.Logger) (err 
 		return err
 	}
 
-	err = custom_module.AddModelFromRegistry(ctx, board.API, docker.Model)
+	err = custom_module.AddModelFromRegistry(ctx, sensor.API, docker.Model)
 	if err != nil {
 		return err
 	}

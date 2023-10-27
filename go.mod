@@ -1,6 +1,6 @@
 module github.com/viam-soleng/viam-docker-manager
 
-go 1.21.3
+go 1.21
 
 require (
 	github.com/edaniels/golog v0.0.0-20230215213219-28954395e8d0

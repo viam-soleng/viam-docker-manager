@@ -1,0 +1,109 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: Go
+
+on:
+  push:
+  release:
+    types: [published]
+  pull_request_target:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    strategy:
+      matrix:
+        runner: [ ubuntu-latest, macos-latest ]
+        arch: [ amd64, arm64 ]
+    runs-on: ${{ matrix.runner }}
+    env:
+      os: ${{contains(matrix.runner, 'ubuntu') && 'linux' || contains(matrix.runner, 'macos') && 'macos' || 'unknown'}}
+      GOOS: ${{contains(matrix.runner, 'ubuntu') && 'linux' || contains(matrix.runner, 'macos') && 'darwin' || 'unknown'}}
+      GOARCH: ${{ matrix.arch }}
+    steps:
+    - name: Check out code
+      if: github.event_name != 'pull_request_target'
+      uses: actions/checkout@v3
+
+    - name: Check out PR branch code
+      if: github.event_name == 'pull_request_target'
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+    - name: Build
+      run: go build -o viam-docker-manager -v .
+
+    - name: Package
+      run: tar -zcf viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}.tar.gz viam-docker-manager
+    
+    - uses: actions/upload-artifact@v3
+      with:
+        name: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}
+        path: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}.tar.gz
+
+  # test:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - name: Check out code
+  #     if: github.event_name != 'pull_request_target'
+  #     uses: actions/checkout@v3
+
+  #   - name: Check out PR branch code
+  #     if: github.event_name == 'pull_request_target'
+  #     uses: actions/checkout@v3
+  #     with:
+  #       ref: ${{ github.event.pull_request.head.sha }}
+  #       fetch-depth: 0
+
+  #   - name: Set up Go
+  #     uses: actions/setup-go@v4
+  #     with:
+  #       go-version: '1.20'
+  #   - name: Test
+  #     run: go test -v ./...
+
+  publish:
+    strategy:
+      matrix:
+        runner: [ ubuntu-latest, macos-latest ]
+        arch: [ amd64, arm64 ]
+    runs-on: ubuntu-latest
+    needs: [build]
+    env:
+      os: ${{contains(matrix.runner, 'ubuntu') && 'linux' || contains(matrix.runner, 'macos') && 'macos' || 'unknown'}}
+      GOOS: ${{contains(matrix.runner, 'ubuntu') && 'linux' || contains(matrix.runner, 'macos') && 'darwin' || 'unknown'}}
+      GOARCH: ${{ matrix.arch }}
+    if: github.event_name == 'release'
+    steps:
+    - name: Check out code
+      if: github.event_name != 'pull_request_target'
+      uses: actions/checkout@v3
+
+    - name: Check out PR branch code
+      if: github.event_name == 'pull_request_target'
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        fetch-depth: 0
+
+    - uses: actions/download-artifact@v3
+      with:
+        name: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}
+    - name: Upload
+      uses: viamrobotics/upload-module@main
+      with:
+        module-path: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}.tar.gz
+        platform: ${{ env.GOOS }}/${{ env.GOARCH }}
+        org-id: 6efeb7e5-91aa-4187-8ed3-e84764726078
+        version: ${{ github.event_name == 'release' && github.ref_name || format('0.0.0-{0}.{1}', github.ref_name, github.run_number) }} # <-- see 'Versioning' section below for explanation
+        key-id: ${{ secrets.viam_key_id }}
+        key-value: ${{ secrets.viam_key_value }}

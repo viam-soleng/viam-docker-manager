@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/edaniels/golog"
@@ -60,6 +61,11 @@ func (dc *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies
 	// In case the module has changed name
 	dc.Named = conf.ResourceName().AsNamed()
 
+	return dc.reconfigure(newConf)
+}
+
+// A helper function to reconfigure the module, broken out from Reconfigure to make testing easier.
+func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	// Check if the image exists already?
 	// If image exists and is running, return
 	// If image exists and is not running, start it.
@@ -77,8 +83,10 @@ func (dc *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies
 	// Write the new compose file
 	composeFile := ""
 	if newConf.ComposeFile != nil {
-		composeFile = fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", newConf.ImageName)
-		fs, err := os.OpenFile("/tmp/", os.O_CREATE|os.O_TRUNC, 0600)
+		composeFile := strings.Replace(newConf.ImageName, "/", "-", -1)
+		path := fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", composeFile)
+		dc.logger.Info("Writing docker-compose file %s", path)
+		fs, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			return err
 		}
@@ -102,10 +110,10 @@ func (dc *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies
 		}
 		if !isRunning {
 			return dc.image.Start()
+		} else {
+			return nil
 		}
 	}
-
-	return nil
 }
 
 // Readings implements sensor.Sensor.

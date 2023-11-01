@@ -108,12 +108,10 @@ func (di *DockerImage) Start() error {
 	di.logger.Debugf("Starting image %s %s", di.Name, di.RepoDigest)
 	args := make([]string, 0)
 	if di.ComposeFile == "" {
-		args = append(args, "run", "--rm", "-d", "-it")
+		args = append(args, "run", "--rm", "-d")
 		args = append(args, fmt.Sprintf("%s@%s", di.Name, di.RepoDigest))
-		// TODO: add support for passing in arguments
-		args = append(args, "bash")
 	} else {
-		args = append(args, "compose", "-f", di.ComposeFile, "up", "-d")
+		args = append(args, "compose", "-f", di.ComposeFile, "up")
 	}
 	proc := exec.Command("docker", args...)
 	outputBytes, err := proc.Output()
@@ -126,6 +124,7 @@ func (di *DockerImage) Start() error {
 	}
 	outputString := string(outputBytes)
 	di.logger.Debugf("Output: %s", outputString)
+	di.logger.Debug("Done starting container")
 	return nil
 }
 

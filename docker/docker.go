@@ -85,14 +85,17 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	if newConf.ComposeFile != nil {
 		composeFile := strings.Replace(newConf.ImageName, "/", "-", -1)
 		path := fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", composeFile)
-		dc.logger.Info("Writing docker-compose file %s", path)
-		fs, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC, 0600)
+		dc.logger.Infof("Writing docker-compose file %s", path)
+		fs, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			return err
 		}
 		defer fs.Close()
 		for _, line := range newConf.ComposeFile {
-			fs.WriteString(fmt.Sprintln(line))
+			_, err := fs.WriteString(fmt.Sprintln(line))
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -151,4 +154,8 @@ func (dc *DockerConfig) Close(ctx context.Context) error {
 		return dc.image.Close()
 	}
 	return nil
+}
+
+func (dc *DockerConfig) Ready(ctx context.Context, extra map[string]interface{}) (bool, error) {
+	return dc.image.IsRunning()
 }

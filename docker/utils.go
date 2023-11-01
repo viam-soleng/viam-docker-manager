@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os/exec"
@@ -10,7 +11,7 @@ import (
 	"github.com/edaniels/golog"
 )
 
-func NewDockerImage(name string, tag string, repoDigest string, composeFile string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
+func NewDockerComposeImage(name string, tag string, repoDigest string, composeFile string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
 	return &DockerImage{
 		mu:          sync.RWMutex{},
 		logger:      logger,
@@ -23,15 +24,32 @@ func NewDockerImage(name string, tag string, repoDigest string, composeFile stri
 	}
 }
 
+func NewDockerImage(name string, tag string, repoDigest string, entry_point_args []string, options []string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
+	return &DockerImage{
+		mu:             sync.RWMutex{},
+		logger:         logger,
+		cancelCtx:      cancelCtx,
+		cancelFunc:     cancelFunc,
+		Name:           name,
+		RepoDigest:     repoDigest,
+		Tag:            tag,
+		ComposeFile:    "",
+		EntryPointArgs: entry_point_args,
+		Options:        options,
+	}
+}
+
 type DockerImage struct {
-	mu          sync.RWMutex
-	cancelCtx   context.Context
-	cancelFunc  context.CancelFunc
-	logger      golog.Logger
-	Name        string
-	RepoDigest  string
-	Tag         string
-	ComposeFile string
+	mu             sync.RWMutex
+	cancelCtx      context.Context
+	cancelFunc     context.CancelFunc
+	logger         golog.Logger
+	Name           string
+	RepoDigest     string
+	Tag            string
+	ComposeFile    string
+	EntryPointArgs []string
+	Options        []string
 }
 
 func (di *DockerImage) Exists() bool {
@@ -75,7 +93,7 @@ func (di *DockerImage) Pull() error {
 
 func (di *DockerImage) IsRunning() (bool, error) {
 	di.logger.Debugf("Checking if image %s %s is running", di.Name, di.RepoDigest)
-	proc := exec.Command("docker", "ps", "-a")
+	proc := exec.Command("docker", "ps")
 	outputBytes, err := proc.Output()
 	if err != nil {
 		exitError := err.(*exec.ExitError)
@@ -109,21 +127,66 @@ func (di *DockerImage) Start() error {
 	args := make([]string, 0)
 	if di.ComposeFile == "" {
 		args = append(args, "run", "--rm", "-d")
+		args = append(args, di.Options...)
 		args = append(args, fmt.Sprintf("%s@%s", di.Name, di.RepoDigest))
+		args = append(args, di.EntryPointArgs...)
 	} else {
-		args = append(args, "compose", "-f", di.ComposeFile, "up")
+		args = append(args, "compose", "-f", di.ComposeFile, "up", "-d")
 	}
 	proc := exec.Command("docker", args...)
-	outputBytes, err := proc.Output()
+	stdout, err := proc.StdoutPipe()
 	if err != nil {
-		exitError := err.(*exec.ExitError)
-		if exitError != nil && exitError.Stderr != nil {
-			di.logger.Errorf("Output: %s", string(exitError.Stderr))
-		}
 		di.logger.Error(err)
 	}
-	outputString := string(outputBytes)
-	di.logger.Debugf("Output: %s", outputString)
+	stderr, err := proc.StderrPipe()
+	if err != nil {
+		di.logger.Error(err)
+	}
+	go func() {
+		stdOutReader := bufio.NewReader(stdout)
+		for {
+			if proc.ProcessState != nil && proc.ProcessState.Exited() {
+				return
+			}
+			line, _, err := stdOutReader.ReadLine()
+			if err != nil {
+				continue
+			}
+
+			di.logger.Info(string(line))
+		}
+	}()
+
+	go func() {
+		stdErrReader := bufio.NewReader(stderr)
+		for {
+			if proc.ProcessState != nil && proc.ProcessState.Exited() {
+				return
+			}
+			line, _, err := stdErrReader.ReadLine()
+			if err != nil {
+				continue
+			}
+
+			di.logger.Info(string(line))
+		}
+	}()
+
+	err = proc.Start()
+	if err != nil {
+		di.logger.Error(err)
+	}
+	defer proc.Wait()
+	// outputBytes, err := proc.Output()
+	// if err != nil {
+	// 	exitError := err.(*exec.ExitError)
+	// 	if exitError != nil && exitError.Stderr != nil {
+	// 		di.logger.Errorf("Output: %s", string(exitError.Stderr))
+	// 	}
+	// 	di.logger.Error(err)
+	// }
+	// outputString := string(outputBytes)
+	// di.logger.Debugf("Output: %s", outputString)
 	di.logger.Debug("Done starting container")
 	return nil
 }

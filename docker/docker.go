@@ -81,7 +81,7 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 
 	// where to store the compose file? maybe in the DockerImage?
 	// Write the new compose file
-	composeFile := ""
+
 	if newConf.ComposeFile != nil {
 		composeFile := strings.Replace(newConf.ImageName, "/", "-", -1)
 		path := fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", composeFile)
@@ -97,9 +97,11 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 				return err
 			}
 		}
+		dc.image = NewDockerComposeImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, composeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
+	} else {
+		dc.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
 	}
 
-	dc.image = NewDockerImage(newConf.ImageName, newConf.ImageTag, newConf.RepoDigest, composeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
 	if !dc.image.Exists() {
 		err := dc.image.Pull()
 		if err != nil {

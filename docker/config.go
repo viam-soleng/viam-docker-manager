@@ -12,7 +12,13 @@ type Config struct {
 	ImageDigest string             `json:"image_digest"`
 	RepoDigest  string             `json:"repo_digest"`
 	ImageTag    string             `json:"image_tag"`
-	ComposeFile []string           `json:"compose_file"`
+
+	// This is for docker compose based configs
+	ComposeFile []string `json:"compose_file"`
+
+	// This is for docker run based configs
+	EntryPointArgs []string `json:"entry_point_args"`
+	Options        []string `json:"options"`
 }
 
 func (conf *Config) Validate(path string) ([]string, error) {

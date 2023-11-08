@@ -1,0 +1,13 @@
+{
+  "module_id": "viam-soleng:viam-docker-manager",
+  "visibility": "public",
+  "url": "https://github.com/viam-soleng/viam-docker-manager",
+  "description": "A module to manage docker containers using Viam",
+  "models": [
+    {
+      "api": "rdk:component:sensor",
+      "model": "viam-soleng:manage:docker"
+    }
+  ],
+  "entrypoint": "viam-docker-manager"
+}

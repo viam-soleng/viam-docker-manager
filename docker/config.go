@@ -2,16 +2,15 @@ package docker
 
 import (
 	"errors"
+	"strings"
 
 	"go.viam.com/rdk/utils"
 )
 
 type Config struct {
-	Attributes  utils.AttributeMap `json:"attributes,omitempty"`
-	ImageName   string             `json:"image_name"`
-	ImageDigest string             `json:"image_digest"`
-	RepoDigest  string             `json:"repo_digest"`
-	ImageTag    string             `json:"image_tag"`
+	Attributes utils.AttributeMap `json:"attributes,omitempty"`
+	ImageName  string             `json:"image_name"`
+	RepoDigest string             `json:"repo_digest"`
 
 	// This is for docker compose based configs
 	ComposeFile []string `json:"compose_file"`
@@ -26,16 +25,21 @@ func (conf *Config) Validate(path string) ([]string, error) {
 		return nil, errors.New("image_name is required")
 	}
 
-	if conf.ImageDigest == "" {
-		return nil, errors.New("image_digest is required")
-	}
-
 	if conf.RepoDigest == "" {
 		return nil, errors.New("repo_digest is required")
 	}
 
-	if conf.ImageTag == "" {
-		return nil, errors.New("image_tag is required")
+	// We need to make sure that the repo digest is contained in the compose file, otherwise running the compose file will pull the latest image
+	if conf.ComposeFile != nil {
+		containsRepoDigest := false
+		for _, line := range conf.ComposeFile {
+			if strings.Contains(line, conf.RepoDigest) {
+				containsRepoDigest = true
+			}
+		}
+		if !containsRepoDigest {
+			return nil, errors.New("repo_digest must be in compose_file")
+		}
 	}
 
 	return nil, nil

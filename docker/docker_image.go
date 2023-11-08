@@ -1,8 +1,8 @@
 package docker
 
 import (
-	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -11,48 +11,61 @@ import (
 	"github.com/edaniels/golog"
 )
 
-func NewDockerComposeImage(name string, tag string, repoDigest string, composeFile string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
-	return &DockerImage{
-		mu:          sync.RWMutex{},
-		logger:      logger,
-		cancelCtx:   cancelCtx,
-		cancelFunc:  cancelFunc,
-		Name:        name,
-		RepoDigest:  repoDigest,
-		Tag:         tag,
-		ComposeFile: composeFile,
-	}
+type DockerImage interface {
+	Exists() bool
+	Start() error
+	Stop() error
+	Remove() error
+	IsRunning() (bool, error)
+	GetImageId() string
+	GetContainerId() string
+	GetRepoDigest() string
 }
 
-func NewDockerImage(name string, tag string, repoDigest string, entry_point_args []string, options []string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) *DockerImage {
-	return &DockerImage{
-		mu:             sync.RWMutex{},
-		logger:         logger,
-		cancelCtx:      cancelCtx,
-		cancelFunc:     cancelFunc,
-		Name:           name,
-		RepoDigest:     repoDigest,
-		Tag:            tag,
-		ComposeFile:    "",
-		EntryPointArgs: entry_point_args,
-		Options:        options,
-	}
+func NewLocalDockerImage() DockerImage {
+
+	return &LocalDockerImage{}
 }
 
-type DockerImage struct {
+type LocalDockerImage struct {
 	mu             sync.RWMutex
 	cancelCtx      context.Context
 	cancelFunc     context.CancelFunc
 	logger         golog.Logger
 	Name           string
 	RepoDigest     string
-	Tag            string
 	ComposeFile    string
 	EntryPointArgs []string
 	Options        []string
 }
 
-func (di *DockerImage) Exists() bool {
+func NewDockerComposeImage(name string, repoDigest string, composeFile string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerImage {
+	return &LocalDockerImage{
+		mu:          sync.RWMutex{},
+		logger:      logger,
+		cancelCtx:   cancelCtx,
+		cancelFunc:  cancelFunc,
+		Name:        name,
+		RepoDigest:  repoDigest,
+		ComposeFile: composeFile,
+	}
+}
+
+func NewDockerImage(name string, repoDigest string, entry_point_args []string, options []string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerImage {
+	return &LocalDockerImage{
+		mu:             sync.RWMutex{},
+		logger:         logger,
+		cancelCtx:      cancelCtx,
+		cancelFunc:     cancelFunc,
+		Name:           name,
+		RepoDigest:     repoDigest,
+		ComposeFile:    "",
+		EntryPointArgs: entry_point_args,
+		Options:        options,
+	}
+}
+
+func (di *LocalDockerImage) Exists() bool {
 	di.logger.Debugf("Checking if image %s %s exists", di.Name, di.RepoDigest)
 	proc := exec.Command("docker", "images", "--digests")
 	outputBytes, err := proc.Output()
@@ -72,26 +85,7 @@ func (di *DockerImage) Exists() bool {
 	return strings.Contains(output, di.RepoDigest)
 }
 
-func (di *DockerImage) Pull() error {
-	di.logger.Debugf("Pulling image %s %s", di.Name, di.RepoDigest)
-	proc := exec.Command("docker", "pull", fmt.Sprintf("%s:%s", di.Name, di.Tag))
-	// TODO: Read output from proc using a pipe
-	// output:=proc.StdoutPipe()
-
-	outputBytes, err := proc.Output()
-	if err != nil {
-		exitError := err.(*exec.ExitError)
-		if exitError != nil && exitError.Stderr != nil {
-			di.logger.Errorf("Output: %s", string(exitError.Stderr))
-		}
-		di.logger.Error(err)
-		return err
-	}
-	di.logger.Debugf("Output: %s", string(outputBytes))
-	return nil
-}
-
-func (di *DockerImage) IsRunning() (bool, error) {
+func (di *LocalDockerImage) IsRunning() (bool, error) {
 	di.logger.Debugf("Checking if image %s %s is running", di.Name, di.RepoDigest)
 	proc := exec.Command("docker", "ps")
 	outputBytes, err := proc.Output()
@@ -105,8 +99,8 @@ func (di *DockerImage) IsRunning() (bool, error) {
 	outputString := string(outputBytes)
 	di.logger.Debugf("Output: %s", outputString)
 
-	containerId, err := di.GetContainerId()
-	if err != nil {
+	containerId := di.GetContainerId()
+	if containerId == "" {
 		di.logger.Warn("Unable to get containerId.")
 		return false, err
 	}
@@ -120,7 +114,7 @@ func (di *DockerImage) IsRunning() (bool, error) {
 	return false, nil
 }
 
-func (di *DockerImage) Start() error {
+func (di *LocalDockerImage) Start() error {
 	di.mu.Lock()
 	defer di.mu.Unlock()
 	di.logger.Debugf("Starting image %s %s", di.Name, di.RepoDigest)
@@ -134,71 +128,53 @@ func (di *DockerImage) Start() error {
 		args = append(args, "compose", "-f", di.ComposeFile, "up", "-d")
 	}
 	proc := exec.Command("docker", args...)
-	stdout, err := proc.StdoutPipe()
+	di.logger.Warn(proc.String())
+	outputBytes, err := proc.Output()
 	if err != nil {
-		di.logger.Error(err)
-	}
-	stderr, err := proc.StderrPipe()
-	if err != nil {
-		di.logger.Error(err)
-	}
-	go func() {
-		stdOutReader := bufio.NewReader(stdout)
-		for {
-			if proc.ProcessState != nil && proc.ProcessState.Exited() {
-				return
-			}
-			line, _, err := stdOutReader.ReadLine()
-			if err != nil {
-				continue
-			}
-
-			di.logger.Info(string(line))
+		exitError := err.(*exec.ExitError)
+		if exitError != nil && exitError.Stderr != nil {
+			di.logger.Errorf("Output: %s", string(exitError.Stderr))
 		}
-	}()
-
-	go func() {
-		stdErrReader := bufio.NewReader(stderr)
-		for {
-			if proc.ProcessState != nil && proc.ProcessState.Exited() {
-				return
-			}
-			line, _, err := stdErrReader.ReadLine()
-			if err != nil {
-				continue
-			}
-
-			di.logger.Info(string(line))
-		}
-	}()
-
-	err = proc.Start()
-	if err != nil {
 		di.logger.Error(err)
 	}
-	defer proc.Wait()
-	// outputBytes, err := proc.Output()
-	// if err != nil {
-	// 	exitError := err.(*exec.ExitError)
-	// 	if exitError != nil && exitError.Stderr != nil {
-	// 		di.logger.Errorf("Output: %s", string(exitError.Stderr))
-	// 	}
-	// 	di.logger.Error(err)
-	// }
-	// outputString := string(outputBytes)
-	// di.logger.Debugf("Output: %s", outputString)
+	outputString := string(outputBytes)
+
+	// TODO: We should really move this to a separate function
+	if strings.Contains(outputString, "The container name") && strings.Contains(outputString, "is already in use by container") {
+		di.logger.Warn("Container name already in use. Trying to stop and remove container.")
+		existingContainerIdStart := strings.Index(outputString, "is already in use by container") + len("is already in use by container") + 2
+		existingContainerIdEnd := strings.LastIndex(outputString, "\"")
+		existingContainerId := outputString[existingContainerIdStart:existingContainerIdEnd]
+		di.logger.Warnf("Existing container id: %s", existingContainerId)
+		proc := exec.Command("docker", "stop", existingContainerId)
+		outputBytes, err := proc.Output()
+		if err != nil {
+			exitError := err.(*exec.ExitError)
+			if exitError != nil && exitError.Stderr != nil {
+				di.logger.Errorf("Output: %s", string(exitError.Stderr))
+			}
+			di.logger.Error(err)
+			return err
+		}
+		outputString := string(outputBytes)
+		di.logger.Debugf("Output: %s", outputString)
+		return errors.New("container name already in use")
+	}
+
+	di.logger.Debugf("Output: %s", outputString)
 	di.logger.Debug("Done starting container")
 	return nil
 }
 
-func (di *DockerImage) Stop() error {
+func (di *LocalDockerImage) Stop() error {
 	di.mu.Lock()
 	defer di.mu.Unlock()
 	di.logger.Debugf("Stopping image %s %s", di.Name, di.RepoDigest)
 
-	containerId, err := di.GetContainerId()
-	if err != nil {
+	containerId := di.GetContainerId()
+	if containerId == "" {
 		di.logger.Warn("Unable to get containerId.")
+		return errors.New("unable to stop image")
 	}
 
 	proc := exec.Command("docker", "stop", containerId)
@@ -218,12 +194,12 @@ func (di *DockerImage) Stop() error {
 }
 
 // TODO: I think this doesn't make sense, I think maybe I need to make this a static method to find and delete unused images
-func (di *DockerImage) Remove() error {
+func (di *LocalDockerImage) Remove() error {
 	di.logger.Debugf("Removing image %s %s", di.Name, di.RepoDigest)
-	imageId, err := di.GetImageId()
-	if err != nil {
+	imageId := di.GetImageId()
+	if imageId == "" {
 		di.logger.Warn("Unable to delete previous image.")
-		return err
+		return errors.New("unable to delete previous image")
 	}
 	proc := exec.Command("docker", "rmi", imageId)
 	// TODO: Read output from proc using a pipe
@@ -242,47 +218,51 @@ func (di *DockerImage) Remove() error {
 	return nil
 }
 
-func (di *DockerImage) GetContainerId() (string, error) {
-	imageId, err := di.GetImageId()
-	if err != nil {
+func (di *LocalDockerImage) GetContainerId() string {
+	imageId := di.GetImageId()
+	if imageId == "" {
 		di.logger.Warn("Unable to get ImageId.")
-		return "", err
+		return ""
 	}
-	proc := exec.Command("docker", "container", "ls", "--all", fmt.Sprintf("--filter=ancestor=%s", imageId), "--format", "{{.ID}}")
+	proc := exec.Command("docker", "container", "ls", "--all", fmt.Sprintf("--filter=ancestor=%s", imageId), "--format", "{{.ID}}", "--no-trunc")
 	outputBytes, err := proc.Output()
 	if err != nil {
 		di.logger.Warn("Unable to get ContainerId.")
+		di.logger.Error(err)
 		exitError := err.(*exec.ExitError)
 		if exitError != nil && exitError.Stderr != nil {
 			di.logger.Errorf("Output: %s", string(exitError.Stderr))
 		}
-		di.logger.Error(err)
-		return "", err
+		return ""
 	}
 
 	containerId := strings.TrimSpace(string(outputBytes))
 	di.logger.Debugf("ContainerId: %s", containerId)
-	return containerId, nil
+	return containerId
 }
 
-func (di *DockerImage) GetImageId() (string, error) {
+func (di *LocalDockerImage) GetImageId() string {
 	proc := exec.Command("docker", "image", "inspect", "--format", "'{{json .Id}}'", fmt.Sprintf("%s@%s", di.Name, di.RepoDigest))
 	outputBytes, err := proc.Output()
 	if err != nil {
 		exitError := err.(*exec.ExitError)
 		if exitError != nil && exitError.Stderr != nil {
+			// This is a special case, if the image does not exist, that should be fine-ish
+			if strings.Contains(string(exitError.Stderr), "Error: No such image") {
+				di.logger.Error(ErrImageDoesNotExist)
+				return ""
+			}
 			di.logger.Errorf("Output: %s", string(exitError.Stderr))
 		}
 		di.logger.Error(err)
-		return "", err
+		return ""
 	}
 	output := string(outputBytes)
 	id := strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(output, "\"", ""), "'", ""))
 	di.logger.Debugf("ImageId: %s", id)
-	return id, nil
+	return id
 }
 
-func (image *DockerImage) Close() error {
-	image.logger.Debugf("Closing image %s %s", image.Name, image.RepoDigest)
-	return image.Stop()
+func (di *LocalDockerImage) GetRepoDigest() string {
+	return di.RepoDigest
 }

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/edaniels/golog"
 	"github.com/stretchr/testify/assert"
 	"go.viam.com/rdk/components/sensor"
+	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
 )
 
@@ -33,7 +33,7 @@ func setupDependencies() (resource.Config, resource.Dependencies) {
 
 func TestReconfigureWritesDockerComposeFile(t *testing.T) {
 	cfg, deps := setupDependencies()
-	sensor, err := NewDockerSensor(context.Background(), deps, cfg, golog.NewTestLogger(t))
+	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestReconfigureWritesDockerComposeFile(t *testing.T) {
 
 func TestImageStarts(t *testing.T) {
 	cfg, deps := setupDependencies()
-	sensor, err := NewDockerSensor(context.Background(), deps, cfg, golog.NewTestLogger(t))
+	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestImageStarts(t *testing.T) {
 
 func TestCleanupOldImage(t *testing.T) {
 	cfg, deps := setupDependencies()
-	sensor, err := NewDockerSensor(context.Background(), deps, cfg, golog.NewTestLogger(t))
+	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}

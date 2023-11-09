@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/edaniels/golog"
 	"go.viam.com/rdk/components/sensor"
+	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
 )
 
@@ -19,7 +19,7 @@ var Model = resource.NewModel("viam-soleng", "manage", "docker")
 type DockerConfig struct {
 	resource.Named
 	mu         sync.RWMutex
-	logger     golog.Logger
+	logger     logging.Logger
 	cancelCtx  context.Context
 	cancelFunc func()
 	image      DockerImage
@@ -35,7 +35,7 @@ func init() {
 		resource.Registration[sensor.Sensor, *Config]{Constructor: NewDockerSensor})
 }
 
-func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger golog.Logger) (sensor.Sensor, error) {
+func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
 	logger.Info("Starting Docker Manager Module v0.0.1")
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 

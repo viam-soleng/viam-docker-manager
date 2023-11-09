@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/edaniels/golog"
+	"go.viam.com/rdk/logging"
 )
 
 var ErrImageDoesNotExist = errors.New("image does not exist")
@@ -27,7 +27,7 @@ type DockerManager interface {
 }
 
 type LocalDockerManager struct {
-	logger golog.Logger
+	logger logging.Logger
 }
 
 type DockerImageDetails struct {
@@ -49,7 +49,7 @@ type DockerContainerDetails struct {
 	Names       string
 }
 
-func NewLocalDockerManager(logger golog.Logger) DockerManager {
+func NewLocalDockerManager(logger logging.Logger) DockerManager {
 	return &LocalDockerManager{logger: logger}
 }
 

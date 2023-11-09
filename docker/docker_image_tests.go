@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/edaniels/golog"
 	"github.com/stretchr/testify/assert"
+	"go.viam.com/rdk/logging"
 )
 
 func TestImageExists(t *testing.T) {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	logger := golog.NewTestLogger(t)
+	logger := logging.NewTestLogger(t)
 
 	image := NewDockerComposeImage("mcr.microsoft.com/dotnet/samples", "sha256:test", "", logger, cancelCtx, cancelFunc)
 	assert.False(t, image.Exists())
@@ -21,7 +21,7 @@ func TestImageExists(t *testing.T) {
 
 func TestImagePull(t *testing.T) {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	logger := golog.NewTestLogger(t)
+	logger := logging.NewTestLogger(t)
 	manager := NewLocalDockerManager(logger)
 
 	image := NewDockerComposeImage("mcr.microsoft.com/dotnet/samples", "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", "", logger, cancelCtx, cancelFunc)
@@ -42,7 +42,7 @@ func TestImagePull(t *testing.T) {
 
 func TestImageRemove(t *testing.T) {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	logger := golog.NewTestLogger(t)
+	logger := logging.NewTestLogger(t)
 	manager := NewLocalDockerManager(logger)
 
 	image := NewDockerComposeImage("mcr.microsoft.com/dotnet/samples", "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", "", logger, cancelCtx, cancelFunc)
@@ -67,7 +67,7 @@ func TestImageRemove(t *testing.T) {
 
 func TestGetImageId(t *testing.T) {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	logger := golog.NewTestLogger(t)
+	logger := logging.NewTestLogger(t)
 
 	image := NewDockerComposeImage("mcr.microsoft.com/dotnet/samples", "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", "", logger, cancelCtx, cancelFunc)
 	assert.True(t, image.Exists())
@@ -79,7 +79,7 @@ func TestGetImageId(t *testing.T) {
 
 func TestIsRunning(t *testing.T) {
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	logger := golog.NewTestLogger(t)
+	logger := logging.NewTestLogger(t)
 	manager := NewLocalDockerManager(logger)
 
 	image := NewDockerComposeImage("ubuntu", "sha256:2b7412e6465c3c7fc5bb21d3e6f1917c167358449fecac8176c6e496e5c1f05f", "", logger, cancelCtx, cancelFunc)

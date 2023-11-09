@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/edaniels/golog"
+	"go.viam.com/rdk/logging"
 )
 
 type DockerImage interface {
@@ -31,7 +31,7 @@ type LocalDockerImage struct {
 	mu             sync.RWMutex
 	cancelCtx      context.Context
 	cancelFunc     context.CancelFunc
-	logger         golog.Logger
+	logger         logging.Logger
 	Name           string
 	RepoDigest     string
 	ComposeFile    string
@@ -39,7 +39,7 @@ type LocalDockerImage struct {
 	Options        []string
 }
 
-func NewDockerComposeImage(name string, repoDigest string, composeFile string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerImage {
+func NewDockerComposeImage(name string, repoDigest string, composeFile string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerImage {
 	return &LocalDockerImage{
 		mu:          sync.RWMutex{},
 		logger:      logger,
@@ -51,7 +51,7 @@ func NewDockerComposeImage(name string, repoDigest string, composeFile string, l
 	}
 }
 
-func NewDockerImage(name string, repoDigest string, entry_point_args []string, options []string, logger golog.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerImage {
+func NewDockerImage(name string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerImage {
 	return &LocalDockerImage{
 		mu:             sync.RWMutex{},
 		logger:         logger,

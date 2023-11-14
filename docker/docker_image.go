@@ -87,7 +87,7 @@ func (di *LocalDockerImage) Exists() bool {
 
 func (di *LocalDockerImage) IsRunning() (bool, error) {
 	di.logger.Debugf("Checking if image %s %s is running", di.Name, di.RepoDigest)
-	proc := exec.Command("docker", "ps")
+	proc := exec.Command("docker", "ps", "--no-trunc")
 	outputBytes, err := proc.Output()
 	if err != nil {
 		exitError := err.(*exec.ExitError)
@@ -138,28 +138,6 @@ func (di *LocalDockerImage) Start() error {
 		di.logger.Error(err)
 	}
 	outputString := string(outputBytes)
-
-	// TODO: We should really move this to a separate function
-	if strings.Contains(outputString, "The container name") && strings.Contains(outputString, "is already in use by container") {
-		di.logger.Warn("Container name already in use. Trying to stop and remove container.")
-		existingContainerIdStart := strings.Index(outputString, "is already in use by container") + len("is already in use by container") + 2
-		existingContainerIdEnd := strings.LastIndex(outputString, "\"")
-		existingContainerId := outputString[existingContainerIdStart:existingContainerIdEnd]
-		di.logger.Warnf("Existing container id: %s", existingContainerId)
-		proc := exec.Command("docker", "stop", existingContainerId)
-		outputBytes, err := proc.Output()
-		if err != nil {
-			exitError := err.(*exec.ExitError)
-			if exitError != nil && exitError.Stderr != nil {
-				di.logger.Errorf("Output: %s", string(exitError.Stderr))
-			}
-			di.logger.Error(err)
-			return err
-		}
-		outputString := string(outputBytes)
-		di.logger.Debugf("Output: %s", outputString)
-		return errors.New("container name already in use")
-	}
 
 	di.logger.Debugf("Output: %s", outputString)
 	di.logger.Debug("Done starting container")

@@ -26,6 +26,7 @@ type DockerConfig struct {
 	manager    DockerManager
 	watcher    func()
 	stop       chan bool
+	wg         sync.WaitGroup
 }
 
 func init() {
@@ -47,6 +48,7 @@ func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resou
 		mu:         sync.RWMutex{},
 		manager:    NewLocalDockerManager(logger),
 		stop:       make(chan bool),
+		wg:         sync.WaitGroup{},
 	}
 
 	if err := b.Reconfigure(ctx, deps, conf); err != nil {
@@ -117,6 +119,8 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 
 	if dc.watcher == nil {
 		dc.watcher = func() {
+			dc.wg.Add(1)
+			defer dc.wg.Done()
 			for {
 				select {
 				case <-dc.cancelCtx.Done():
@@ -201,6 +205,7 @@ func (dc *DockerConfig) Close(ctx context.Context) error {
 	if dc.image != nil {
 		return dc.image.Stop()
 	}
+	dc.wg.Wait()
 	return nil
 }
 

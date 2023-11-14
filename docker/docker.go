@@ -12,6 +12,7 @@ import (
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
+	viamutils "go.viam.com/utils"
 )
 
 var Model = resource.NewModel("viam-soleng", "manage", "docker")
@@ -165,7 +166,7 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 				time.Sleep(10 * time.Second)
 			}
 		}
-		go dc.watcher()
+		viamutils.PanicCapturingGo(dc.watcher)
 	}
 	return nil
 }

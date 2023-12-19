@@ -19,15 +19,18 @@ var Model = resource.NewModel("viam-soleng", "manage", "docker")
 
 type DockerConfig struct {
 	resource.Named
-	mu         sync.RWMutex
-	logger     logging.Logger
-	cancelCtx  context.Context
-	cancelFunc func()
-	image      DockerImage
-	manager    DockerManager
-	watcher    func()
-	stop       chan bool
-	wg         sync.WaitGroup
+	mu           sync.RWMutex
+	logger       logging.Logger
+	cancelCtx    context.Context
+	cancelFunc   func()
+	image        DockerImage
+	manager      DockerManager
+	watcher      func()
+	stop         chan bool
+	wg           sync.WaitGroup
+	downloadOnly bool
+	runOnce      bool
+	hasRun       bool
 }
 
 func init() {
@@ -118,6 +121,21 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 		dc.image = NewDockerImage(newConf.ImageName, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
 	}
 
+	// Make sure we track if the image is download only
+	// I'm not a huge fan of this functionality, it feels like we're using the wrong tool for
+	// the job, but it's what we have for now.
+	dc.downloadOnly = newConf.DownloadOnly
+
+	// Make sure we track if the image is run once only
+	dc.runOnce = newConf.RunOnce
+
+	// For any image that is configured to run once only, we need to track if it has run already
+	hasRun, err := dc.image.GetHasRun()
+	if err != nil {
+		dc.logger.Warnf("Error getting hasRun: %v", err)
+	}
+	dc.hasRun = hasRun
+
 	if dc.watcher == nil {
 		dc.watcher = func() {
 			dc.wg.Add(1)
@@ -138,10 +156,9 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 							dc.logger.Error(err)
 							continue
 						}
-						dc.logger.Debug("image pulled. Starting...")
-						err = dc.image.Start()
-						if err != nil {
-							dc.logger.Error(err)
+						if dc.shouldRun() {
+							dc.logger.Debug("image pulled. Starting...")
+							dc.startInternal()
 						}
 					} else {
 						dc.logger.Debug("image exists. Checking if running...")
@@ -150,15 +167,11 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 							dc.logger.Error(err)
 							continue
 						}
-						if !isRunning {
+						if !isRunning && dc.shouldRun() {
 							dc.logger.Debug("container not running. Starting...")
-							err := dc.image.Start()
-							if err != nil {
-								dc.logger.Error(err)
-								continue
-							}
+							dc.startInternal()
 						} else {
-							dc.logger.Debug("container running. Sleeping...")
+							dc.logger.Debug("container run conditions satisfied. Sleeping...")
 						}
 					}
 				}
@@ -212,4 +225,24 @@ func (dc *DockerConfig) Close(ctx context.Context) error {
 
 func (dc *DockerConfig) Ready(ctx context.Context, extra map[string]interface{}) (bool, error) {
 	return dc.image.IsRunning()
+}
+
+func (dc *DockerConfig) shouldRun() bool {
+	// If the image is only configured to be downloaded, we don't want to start it
+	if dc.downloadOnly {
+		return false
+	}
+	// If the image should run once only, we don't want to start it if it has already run
+	if (dc.runOnce && !dc.hasRun) || !dc.runOnce {
+		return true
+	}
+	return false
+}
+
+func (dc *DockerConfig) startInternal() {
+	err := dc.image.Start()
+	if err != nil {
+		dc.logger.Error(err)
+	}
+	dc.image.SetHasRun()
 }

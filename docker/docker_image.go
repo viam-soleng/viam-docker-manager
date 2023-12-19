@@ -2,11 +2,16 @@ package docker
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"go.viam.com/rdk/logging"
 )
@@ -17,6 +22,8 @@ type DockerImage interface {
 	Stop() error
 	Remove() error
 	IsRunning() (bool, error)
+	GetHasRun() (bool, error)
+	SetHasRun() error
 	GetImageId() string
 	GetContainerId() string
 	GetRepoDigest() string
@@ -243,4 +250,108 @@ func (di *LocalDockerImage) GetImageId() string {
 
 func (di *LocalDockerImage) GetRepoDigest() string {
 	return di.RepoDigest
+}
+
+func (di *LocalDockerImage) readHasRunFile(f *os.File) (map[string]time.Time, error) {
+	hasRunDict := make(map[string]time.Time)
+	reader := csv.NewReader(f)
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("unable to read has-run.status file: %w", err)
+		}
+
+		dockerImageID := record[0]
+		lastRun, err := time.Parse(time.RFC3339, record[1])
+		if err != nil {
+			di.logger.Debugf("Unable to parse last run time: %v, Err: %w", record[1], err)
+			continue
+		}
+		hasRunDict[dockerImageID] = lastRun
+	}
+	di.logger.Debugf("hasRunDict: %v", hasRunDict)
+	return hasRunDict, nil
+}
+
+func (di *LocalDockerImage) GetHasRun() (bool, error) {
+	hasRunFile, err := getHasRunStatusFileHandle()
+	if err != nil {
+		return false, err
+	}
+
+	defer closeHasRunStatus(hasRunFile)
+
+	hasRunDict, err := di.readHasRunFile(hasRunFile)
+	if err != nil {
+		return false, err
+	}
+	// Check if hasRunDict contains the key dc.image.GetRepoDigest()
+	if lastRun, ok := hasRunDict[di.GetRepoDigest()]; ok {
+		// Key exists in hasRunDict
+		di.logger.Debugf("Image has run before: %v", lastRun)
+		// The image has run before
+		return true, nil
+	} else {
+		// The image has not run before
+		return false, nil
+	}
+}
+
+func (di *LocalDockerImage) SetHasRun() error {
+	hasRunFile, err := getHasRunStatusFileHandle()
+	if err != nil {
+		return err
+	}
+
+	defer closeHasRunStatus(hasRunFile)
+
+	hasRunDict, err := di.readHasRunFile(hasRunFile)
+	if err != nil {
+		return err
+	}
+
+	// The image has not run before
+	hasRunDict[di.GetRepoDigest()] = time.Now()
+	hasRunFile.Truncate(0)
+	hasRunFile.Seek(0, 0)
+	writer := csv.NewWriter(hasRunFile)
+	for k, v := range hasRunDict {
+		err := writer.Write([]string{k, v.Format(time.RFC3339)})
+		if err != nil {
+			return fmt.Errorf("unable to write has-run.status file: %w", err)
+		}
+	}
+	writer.Flush()
+	return nil
+}
+
+func getHasRunStatusFileHandle() (*os.File, error) {
+	moduleDirectory := os.Getenv("VIAM_MODULE_DATA")
+	if moduleDirectory == "" {
+		return nil, errors.New("VIAM_MODULE_DATA is not set")
+	}
+
+	hasRunFilePath := fmt.Sprintf("%s/%s", moduleDirectory, "has-run.status")
+	hasRunFile, err := os.OpenFile(hasRunFilePath, os.O_RDWR|os.O_CREATE, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("unable to open has-run.status file: %w", err)
+	}
+
+	// Lock the file to make sure nobody messes with it while we're in startup.
+	err = syscall.Flock(int(hasRunFile.Fd()), syscall.LOCK_EX)
+	if err != nil {
+		// Make sure we close the file if we fail to lock it
+		defer hasRunFile.Close()
+		return nil, fmt.Errorf("unable to lock has-run.status file: %w", err)
+	}
+	return hasRunFile, nil
+}
+
+func closeHasRunStatus(hasRunFile *os.File) {
+	// Don't forget to unlock the file when we're done.
+	defer syscall.Flock(int(hasRunFile.Fd()), syscall.LOCK_UN)
+	defer hasRunFile.Close()
 }

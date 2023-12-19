@@ -18,6 +18,8 @@ type Config struct {
 	// This is for docker run based configs
 	EntryPointArgs []string `json:"entry_point_args"`
 	Options        []string `json:"options"`
+	RunOnce        bool     `json:"run_once"`
+	DownloadOnly   bool     `json:"download_only"`
 }
 
 func (conf *Config) Validate(path string) ([]string, error) {

@@ -1,16 +1,44 @@
 package docker_deploy
 
 import (
+	"context"
 	"testing"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"go.viam.com/rdk/logging"
 )
 
-func TestListContainers(t *testing.T) {
+var imageName = "mcr.microsoft.com/dotnet/samples"
+var repoDigest = "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1"
+
+func docker_manager_test_setup(t *testing.T) (logging.Logger, DockerManager) {
 	logger := logging.NewTestLogger(t)
 	dm, err := NewLocalDockerManager(logger)
 	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		cli, err := client.NewClientWithOpts(client.FromEnv)
+		if err != nil {
+			t.Error(err)
+		}
+		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+		assert.NoError(t, err)
+		for _, container := range containers {
+			cli.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{Force: true})
+		}
+		if imageExists, _ := dm.ImageExists(repoDigest); imageExists {
+			err = dm.RemoveImageByRepoDigest(repoDigest)
+			assert.NoError(t, err)
+		}
+	})
+
+	return logger, dm
+}
+
+func TestListContainers(t *testing.T) {
+	_, dm := docker_manager_test_setup(t)
 	containers, err := dm.ListContainers()
 	if err != nil {
 		t.Fatal(err)
@@ -22,9 +50,7 @@ func TestListContainers(t *testing.T) {
 }
 
 func TestListImages(t *testing.T) {
-	logger := logging.NewTestLogger(t)
-	dm, err := NewLocalDockerManager(logger)
-	assert.NoError(t, err)
+	_, dm := docker_manager_test_setup(t)
 
 	images, err := dm.ListImages()
 	if err != nil {
@@ -37,96 +63,89 @@ func TestListImages(t *testing.T) {
 }
 
 func TestGetContainerImageDigest(t *testing.T) {
-	logger := logging.NewTestLogger(t)
-	dm, err := NewLocalDockerManager(logger)
+	logger, dm := docker_manager_test_setup(t)
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	err := dm.PullImage(imageName, repoDigest)
 	assert.NoError(t, err)
-	digest, err := dm.GetContainerImageDigest("8ab34f2bc6e1d20825672e44be4252313503290abf160260070b776177e1d6be")
+	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx, cancelFunc)
+	assert.NoError(t, err)
+	digest, err := dm.GetContainerImageDigest(container.GetContainerId())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, "sha256:2b7412e6465c3c7fc5bb21d3e6f1917c167358449fecac8176c6e496e5c1f05f", digest)
+	assert.Equal(t, "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", digest)
 }
 
 // TODO: This test will fail until we start the container. We need to add more setup code.
 func TestGetContainersRunningImage(t *testing.T) {
-	logger := logging.NewTestLogger(t)
-	dm, err := NewLocalDockerManager(logger)
+	logger, dm := docker_manager_test_setup(t)
+	err := dm.PullImage(imageName, repoDigest)
 	assert.NoError(t, err)
-	containers, err := dm.GetContainersRunningImage("sha256:2b7412e6465c3c7fc5bb21d3e6f1917c167358449fecac8176c6e496e5c1f05f")
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx, cancelFunc)
+	assert.NoError(t, err)
+
+	err = dm.StartContainer(container.GetContainerId())
+	assert.NoError(t, err)
+
+	containers, err := dm.GetContainersRunningImage("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, 3, len(containers))
+	assert.Equal(t, 1, len(containers))
 	for _, container := range containers {
 		t.Logf("%#v", container)
 	}
 }
 
 func TestImageExists(t *testing.T) {
-	logger := logging.NewTestLogger(t)
-	dm, err := NewLocalDockerManager(logger)
-	assert.NoError(t, err)
+	_, dm := docker_manager_test_setup(t)
 
-	err = dm.PullImage("mcr.microsoft.com/dotnet/samples", "sha256:test")
-	assert.NoError(t, err)
-	exists, err := dm.ImageExists("sha256:test")
+	exists, err := dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 
-	err = dm.PullImage("mcr.microsoft.com/dotnet/samples", "sha256:test")
+	err = dm.PullImage(imageName, repoDigest)
 	assert.NoError(t, err)
-	exists, err = dm.ImageExists("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.True(t, exists)
-
-	t.Cleanup(func() {
-		err = dm.RemoveImageByImageId("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
-		assert.NoError(t, err)
-	})
 }
 
 func TestImagePull(t *testing.T) {
-	logger := logging.NewTestLogger(t)
-	dm, err := NewLocalDockerManager(logger)
-	assert.NoError(t, err)
+	_, dm := docker_manager_test_setup(t)
 
-	exists, err := dm.ImageExists("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	exists, err := dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 
-	err = dm.PullImage("mcr.microsoft.com/dotnet/samples", "sha256:test")
+	err = dm.PullImage(imageName, repoDigest)
 	assert.NoError(t, err)
-	exists, err = dm.ImageExists("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.True(t, exists)
-
-	t.Cleanup(func() {
-		err = dm.RemoveImageByImageId("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
-		assert.NoError(t, err)
-	})
 }
 
 func TestImageRemove(t *testing.T) {
-	logger := logging.NewTestLogger(t)
-	dm, err := NewLocalDockerManager(logger)
-	assert.NoError(t, err)
+	_, dm := docker_manager_test_setup(t)
 
-	exists, err := dm.ImageExists("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	exists, err := dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 
-	err = dm.PullImage("mcr.microsoft.com/dotnet/samples", "sha256:test")
+	err = dm.PullImage(imageName, repoDigest)
 	assert.NoError(t, err)
-	exists, err = dm.ImageExists("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.True(t, exists)
 
-	err = dm.RemoveImageByImageId("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	err = dm.RemoveImageByRepoDigest(repoDigest)
 	assert.NoError(t, err)
 
-	exists, err = dm.ImageExists("sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1")
+	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 }

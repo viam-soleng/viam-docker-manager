@@ -22,7 +22,7 @@ type DockerConfig struct {
 	cancelFunc   func()
 	containers   []DockerContainer
 	manager      DockerManager
-	watcher      func()
+	watchers     []func()
 	stop         chan bool
 	wg           sync.WaitGroup
 	downloadOnly bool
@@ -51,7 +51,7 @@ func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resou
 		cancelFunc: cancelFunc,
 		mu:         sync.RWMutex{},
 		manager:    manager,
-		stop:       make(chan bool),
+		stop:       make(chan bool, 1),
 		wg:         sync.WaitGroup{},
 		containers: []DockerContainer{},
 	}
@@ -99,6 +99,14 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	// TODO: Cleanup old images
 	// Possibly tag images with the component name that uses them?
 
+	// Make sure we track if the image is download only
+	// I'm not a huge fan of this functionality, it feels like we're using the wrong tool for
+	// the job, but it's what we have for now.
+	dc.downloadOnly = newConf.DownloadOnly
+
+	// Make sure we track if the image is run once only
+	dc.runOnce = newConf.RunOnce
+
 	// Check if the image exists locally already
 	imageExists, err := dc.manager.ImageExists(newConf.RepoDigest)
 	if err != nil {
@@ -114,33 +122,26 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 		}
 	}
 
-	// where to store the compose file? maybe in the DockerImage?
-	// Write the new compose file
-	if newConf.ComposeFile != nil {
-		containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
-		if err != nil {
-			return err
+	if !dc.downloadOnly {
+		if newConf.ComposeFile != nil {
+			containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
+			if err != nil {
+				return err
+			}
+			dc.containers = containers
+		} else {
+			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
+			if err != nil {
+				return err
+			}
+			dc.containers = []DockerContainer{container}
 		}
-		dc.containers = containers
-	} else {
-		container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
-		if err != nil {
-			return err
-		}
-		dc.containers = []DockerContainer{container}
 	}
 
-	// Make sure we track if the image is download only
-	// I'm not a huge fan of this functionality, it feels like we're using the wrong tool for
-	// the job, but it's what we have for now.
-	dc.downloadOnly = newConf.DownloadOnly
-
-	// Make sure we track if the image is run once only
-	dc.runOnce = newConf.RunOnce
-
-	if dc.watcher == nil {
-		dc.watcher = func() {
-			for _, container := range dc.containers {
+	if dc.watchers == nil {
+		dc.watchers = make([]func(), len(dc.containers))
+		for i, container := range dc.containers {
+			dc.watchers[i] = func() {
 				dc.wg.Add(1)
 				defer dc.wg.Done()
 				for {
@@ -151,26 +152,27 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 					case <-dc.stop:
 						dc.logger.Info("received stop signal")
 						return
-					default:
-						dc.logger.Debug("image exists. Checking if running...")
-						isRunning, err := container.IsRunning()
-						if err != nil {
-							dc.logger.Error(err)
-							continue
-						}
-						if !isRunning && dc.shouldRun() {
-							dc.logger.Debug("container not running. Starting...")
-							dc.startInternal()
-						} else {
-							dc.logger.Debug("container run conditions satisfied. Sleeping...")
-						}
+					case <-time.After(10 * time.Second):
+						dc.logger.Debug("iterating...")
 					}
 
-					time.Sleep(10 * time.Second)
+					dc.logger.Debug("image exists. Checking if running...")
+					isRunning, err := container.IsRunning()
+					if err != nil {
+						dc.logger.Error(err)
+						continue
+					}
+					if !isRunning && dc.shouldRun() {
+						dc.logger.Debug("container not running. Starting...")
+						dc.startInternal()
+					} else {
+						dc.logger.Debug("container run conditions satisfied. Sleeping...")
+					}
 				}
 			}
+			viamutils.PanicCapturingGo(dc.watchers[i])
 		}
-		viamutils.PanicCapturingGo(dc.watcher)
+
 	}
 	return nil
 }
@@ -217,12 +219,14 @@ func (dc *DockerConfig) Close(ctx context.Context) error {
 	dc.stop <- true
 	for _, container := range dc.containers {
 		if container != nil {
+			dc.logger.Debugf("Stopping container %v", container.GetContainerId())
 			err := dc.manager.StopContainer(container.GetContainerId())
 			if err != nil {
 				dc.logger.Error(err)
 			}
 		}
 	}
+	dc.logger.Debug("Stop command sent, waiting on WaitGroup")
 	dc.wg.Wait()
 	return nil
 }

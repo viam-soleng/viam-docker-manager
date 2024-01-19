@@ -88,8 +88,15 @@ func (dm *LocalDockerManager) ListImages() ([]DockerImageDetails, error) {
 	var images []DockerImageDetails
 
 	for _, image := range imgs {
-		repoDigest := image.RepoDigests[0]
+		repoDigest := ""
+		if len(image.RepoDigests) > 0 {
+			repoDigest = image.RepoDigests[0]
+		}
 		s := strings.Split(repoDigest, "@")
+		if len(s) != 2 {
+			dm.logger.Warnf("Invalid repo digest for image %s, skipping", image.ID)
+			continue
+		}
 
 		tag := ""
 		if len(image.RepoTags) > 0 {
@@ -99,7 +106,7 @@ func (dm *LocalDockerManager) ListImages() ([]DockerImageDetails, error) {
 		images = append(images, DockerImageDetails{
 			Repository: s[0],
 			Tag:        tag,
-			RepoDigest: repoDigest,
+			RepoDigest: s[1],
 			ImageID:    image.ID,
 			Created:    time.Unix(image.Created, 0),
 			Size:       image.Size,
@@ -274,7 +281,7 @@ func (dm *LocalDockerManager) PullImage(imageName string, repoDigest string) err
 
 func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) (DockerContainer, error) {
 	config := &container.Config{
-		Image: imageName,
+		Image: fmt.Sprintf("%s@%s", imageName, repoDigest),
 		Cmd:   entry_point_args,
 	}
 

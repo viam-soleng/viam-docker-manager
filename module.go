@@ -8,7 +8,7 @@ import (
 	"go.viam.com/rdk/module"
 	"go.viam.com/utils"
 
-	"github.com/viam-soleng/viam-docker-manager/docker"
+	"github.com/viam-soleng/viam-docker-manager/docker_deploy"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func mainWithArgs(ctx context.Context, args []string, logger logging.Logger) (er
 		return err
 	}
 
-	err = custom_module.AddModelFromRegistry(ctx, sensor.API, docker.Model)
+	err = custom_module.AddModelFromRegistry(ctx, sensor.API, docker_deploy.Model)
 	if err != nil {
 		return err
 	}

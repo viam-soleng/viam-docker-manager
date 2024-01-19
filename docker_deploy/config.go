@@ -1,4 +1,4 @@
-package docker
+package docker_deploy
 
 import (
 	"errors"

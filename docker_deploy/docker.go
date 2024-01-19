@@ -1,11 +1,8 @@
-package docker
+package docker_deploy
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,14 +20,13 @@ type DockerConfig struct {
 	logger       logging.Logger
 	cancelCtx    context.Context
 	cancelFunc   func()
-	image        DockerImage
+	containers   []DockerContainer
 	manager      DockerManager
 	watcher      func()
 	stop         chan bool
 	wg           sync.WaitGroup
 	downloadOnly bool
 	runOnce      bool
-	hasRun       bool
 }
 
 func init() {
@@ -41,18 +37,23 @@ func init() {
 }
 
 func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
-	logger.Info("Starting Docker Manager Module v0.0.1")
+	logger.Info("Starting Docker Manager Module v0.0.2")
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-
+	manager, err := NewLocalDockerManager(logger)
+	if err != nil {
+		defer cancelFunc()
+		return nil, err
+	}
 	b := DockerConfig{
 		Named:      conf.ResourceName().AsNamed(),
 		logger:     logger,
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
 		mu:         sync.RWMutex{},
-		manager:    NewLocalDockerManager(logger),
+		manager:    manager,
 		stop:       make(chan bool),
 		wg:         sync.WaitGroup{},
+		containers: []DockerContainer{},
 	}
 
 	if err := b.Reconfigure(ctx, deps, conf); err != nil {
@@ -85,40 +86,48 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	// If image does not exist, pull it
 	// Start image
 
-	// Close the existing image
-	if dc.image != nil {
-		dc.image.Stop()
+	// Close the existing containers, remove it, and set it to nil
+	// Should download the new image before stopping the old one
+	if len(dc.containers) > 0 {
+		for _, container := range dc.containers {
+			dc.manager.StopContainer(container.GetContainerId())
+			dc.manager.RemoveContainer(container.GetContainerId())
+		}
+		dc.containers = []DockerContainer{}
 	}
 
-	// delete the old compose file if the new config doesn't have one
-	dm := LocalDockerManager{}
-	if dc.image != nil && newConf.RepoDigest != "" && dc.image.GetRepoDigest() != newConf.RepoDigest {
-		err := dm.RemoveImageByRepoDigest(dc.image.GetRepoDigest())
+	// TODO: Cleanup old images
+	// Possibly tag images with the component name that uses them?
+
+	// Check if the image exists locally already
+	imageExists, err := dc.manager.ImageExists(newConf.RepoDigest)
+	if err != nil {
+		return err
+	}
+
+	// If the image doesn't exist, pull it
+	if !imageExists {
+		dc.logger.Infof("Image %s does not exist. Pulling...", newConf.ImageName)
+		err := dc.manager.PullImage(newConf.ImageName, newConf.RepoDigest)
 		if err != nil {
-			dc.logger.Warnf("Error removing old image: %v", err)
+			return err
 		}
 	}
 
 	// where to store the compose file? maybe in the DockerImage?
 	// Write the new compose file
 	if newConf.ComposeFile != nil {
-		sanitizedImageName := strings.Replace(newConf.ImageName, "/", "-", -1)
-		composeFile := fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", sanitizedImageName)
-		dc.logger.Infof("Writing docker-compose file %s", composeFile)
-		fs, err := os.OpenFile(composeFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+		containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
 		if err != nil {
 			return err
 		}
-		defer fs.Close()
-		for _, line := range newConf.ComposeFile {
-			_, err := fs.WriteString(fmt.Sprintln(line))
-			if err != nil {
-				return err
-			}
-		}
-		dc.image = NewDockerComposeImage(newConf.ImageName, newConf.RepoDigest, composeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
+		dc.containers = containers
 	} else {
-		dc.image = NewDockerImage(newConf.ImageName, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
+		container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
+		if err != nil {
+			return err
+		}
+		dc.containers = []DockerContainer{container}
 	}
 
 	// Make sure we track if the image is download only
@@ -129,40 +138,22 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	// Make sure we track if the image is run once only
 	dc.runOnce = newConf.RunOnce
 
-	// For any image that is configured to run once only, we need to track if it has run already
-	hasRun, err := dc.image.GetHasRun()
-	if err != nil {
-		dc.logger.Warnf("Error getting hasRun: %v", err)
-	}
-	dc.hasRun = hasRun
-
 	if dc.watcher == nil {
 		dc.watcher = func() {
-			dc.wg.Add(1)
-			defer dc.wg.Done()
-			for {
-				select {
-				case <-dc.cancelCtx.Done():
-					dc.logger.Info("received cancel signal")
-					return
-				case <-dc.stop:
-					dc.logger.Info("received stop signal")
-					return
-				default:
-					if !dc.image.Exists() {
-						dc.logger.Debug("image does not exist. Pulling...")
-						err := dc.manager.PullImage(newConf.ImageName, newConf.RepoDigest)
-						if err != nil {
-							dc.logger.Error(err)
-							continue
-						}
-						if dc.shouldRun() {
-							dc.logger.Debug("image pulled. Starting...")
-							dc.startInternal()
-						}
-					} else {
+			for _, container := range dc.containers {
+				dc.wg.Add(1)
+				defer dc.wg.Done()
+				for {
+					select {
+					case <-dc.cancelCtx.Done():
+						dc.logger.Info("received cancel signal")
+						return
+					case <-dc.stop:
+						dc.logger.Info("received stop signal")
+						return
+					default:
 						dc.logger.Debug("image exists. Checking if running...")
-						isRunning, err := dc.image.IsRunning()
+						isRunning, err := container.IsRunning()
 						if err != nil {
 							dc.logger.Error(err)
 							continue
@@ -174,9 +165,9 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 							dc.logger.Debug("container run conditions satisfied. Sleeping...")
 						}
 					}
-				}
 
-				time.Sleep(10 * time.Second)
+					time.Sleep(10 * time.Second)
+				}
 			}
 		}
 		viamutils.PanicCapturingGo(dc.watcher)
@@ -184,31 +175,39 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	return nil
 }
 
-// Readings implements sensor.Sensor.
-func (dc *DockerConfig) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
-	if dc.image == nil {
-		return map[string]interface{}{
-			"repoDigest":  "",
-			"imageId":     "",
-			"containerId": "",
-			"isRunning":   false,
-		}, nil
+func (dc *DockerConfig) getReadings(container DockerContainer) (map[string]interface{}, error) {
+	imageId, err := container.GetImageId()
+	if err != nil {
+		return nil, err
 	}
 
-	imageId := dc.image.GetImageId()
 	if imageId == "" {
 		return nil, errors.New("imageId is empty")
 	}
-	isRunning, err := dc.image.IsRunning()
+	isRunning, err := container.IsRunning()
 	if err != nil {
 		return nil, err
 	}
 	return map[string]interface{}{
-		"repoDigest":  dc.image.GetRepoDigest(),
+		"repoDigest":  container.GetRepoDigest(),
 		"imageId":     imageId,
-		"containerId": dc.image.GetContainerId(),
+		"containerId": container.GetContainerId(),
 		"isRunning":   isRunning,
 	}, nil
+}
+
+// Readings implements sensor.Sensor.
+func (dc *DockerConfig) Readings(ctx context.Context, extra map[string]interface{}) (map[string]interface{}, error) {
+	resp := map[string]interface{}{}
+	for _, container := range dc.containers {
+		readings, err := dc.getReadings(container)
+		if err != nil {
+			dc.logger.Error(err)
+			continue
+		}
+		resp[container.GetContainerId()] = readings
+	}
+	return resp, nil
 }
 
 func (dc *DockerConfig) Close(ctx context.Context) error {
@@ -216,15 +215,28 @@ func (dc *DockerConfig) Close(ctx context.Context) error {
 	defer dc.mu.Unlock()
 	dc.logger.Debug("Closing Docker Manager Module")
 	dc.stop <- true
-	if dc.image != nil {
-		return dc.image.Stop()
+	for _, container := range dc.containers {
+		if container != nil {
+			err := dc.manager.StopContainer(container.GetContainerId())
+			if err != nil {
+				dc.logger.Error(err)
+			}
+		}
 	}
 	dc.wg.Wait()
 	return nil
 }
 
 func (dc *DockerConfig) Ready(ctx context.Context, extra map[string]interface{}) (bool, error) {
-	return dc.image.IsRunning()
+	isRunning := false
+	for _, container := range dc.containers {
+		h, err := container.IsRunning()
+		if err != nil {
+			dc.logger.Error(err)
+		}
+		isRunning = isRunning && h
+	}
+	return isRunning, nil
 }
 
 func (dc *DockerConfig) shouldRun() bool {
@@ -233,16 +245,27 @@ func (dc *DockerConfig) shouldRun() bool {
 		return false
 	}
 	// If the image should run once only, we don't want to start it if it has already run
-	if (dc.runOnce && !dc.hasRun) || !dc.runOnce {
+	hasRun := false
+	for _, container := range dc.containers {
+		h, err := container.GetHasRun()
+		if err != nil {
+			dc.logger.Error(err)
+		}
+		hasRun = hasRun && h
+	}
+	if (dc.runOnce && !hasRun) || !dc.runOnce {
 		return true
 	}
 	return false
 }
 
 func (dc *DockerConfig) startInternal() {
-	err := dc.image.Start()
-	if err != nil {
-		dc.logger.Error(err)
+	for _, container := range dc.containers {
+		dc.logger.Debug("Starting container %v", container.GetContainerId())
+		err := dc.manager.StartContainer(container.GetContainerId())
+		if err != nil {
+			dc.logger.Error(err)
+		}
+		container.SetHasRun()
 	}
-	dc.image.SetHasRun()
 }

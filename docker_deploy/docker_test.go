@@ -1,17 +1,20 @@
-package docker
+package docker_deploy
 
 import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
 )
 
-func setupDependencies() (resource.Config, resource.Dependencies) {
+func setupDependencies(t *testing.T) (resource.Config, resource.Dependencies) {
 	// Gotta set the environment variable because the running code expects it to be there
 	os.Setenv("VIAM_MODULE_DATA", os.TempDir())
 	cfg := resource.Config{
@@ -31,92 +34,72 @@ func setupDependencies() (resource.Config, resource.Dependencies) {
 		},
 	}
 
+	t.Cleanup(func() {
+		cli, err := client.NewClientWithOpts(client.FromEnv)
+		if err != nil {
+			t.Error(err)
+		}
+		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+		assert.NoError(t, err)
+		for _, container := range containers {
+			cli.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{Force: true})
+		}
+	})
+
 	return cfg, resource.Dependencies{}
 }
 
 func TestReconfigureWritesDockerComposeFile(t *testing.T) {
-	cfg, deps := setupDependencies()
+	cfg, deps := setupDependencies(t)
 	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	assert.NotNil(t, sensor)
 }
 
 func TestImageStarts(t *testing.T) {
-	cfg, deps := setupDependencies()
+	cfg, deps := setupDependencies(t)
 	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	// Make sure we created the sensor
 	assert.NotNil(t, sensor)
-
-	// Now make sure it is actually running
-	dm := LocalDockerManager{}
-	containers, err := dm.ListContainers()
+	cli := sensor.(*DockerConfig).manager.(*LocalDockerManager).dockerClient
+	timeout := time.Now().Add(10 * time.Second)
+	for {
+		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
+		assert.NoError(t, err)
+		if len(containers) > 0 {
+			break
+		}
+		if time.Now().After(timeout) {
+			t.Error("Timed out waiting for container to start")
+		}
+	}
+	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(containers))
 
 	sensor.Close(context.Background())
 }
 
-func TestCleanupOldImage(t *testing.T) {
-	cfg, deps := setupDependencies()
-	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert.NotNil(t, sensor)
-
-	dm := LocalDockerManager{}
-	images, err := dm.ListImages()
-	assert.NoError(t, err)
-	if len(images) != 1 {
-		t.Logf("Found %d images, expected 1", len(images))
-		for _, image := range images {
-			t.Logf("Image: %#v", image)
-		}
-		t.FailNow()
-	}
-	assert.Equal(t, 1, len(images))
-
-	newConfig, _ := setupDependencies()
-	newConfig.ConvertedAttributes.(*Config).RepoDigest = "sha256:c9cf959fd83770dfdefd8fb42cfef0761432af36a764c077aed54bbc5bb25368"
-	newConfig.ConvertedAttributes.(*Config).ComposeFile = []string{
-		"services:",
-		"  app:",
-		"    image: ubuntu@sha256:c9cf959fd83770dfdefd8fb42cfef0761432af36a764c077aed54bbc5bb25368",
-		"    command: sleep 10",
-		"    working_dir: /root",
-	}
-	sensor.Reconfigure(context.Background(), deps, newConfig)
-
-	images, err = dm.ListImages()
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(images))
-	assert.Equal(t, "sha256:c9cf959fd83770dfdefd8fb42cfef0761432af36a764c077aed54bbc5bb25368", images[0].RepoDigest)
-
-	err = dm.RemoveImageByRepoDigest("sha256:c9cf959fd83770dfdefd8fb42cfef0761432af36a764c077aed54bbc5bb25368")
-	assert.NoError(t, err)
-}
-
 func TestDownloadOnlyImages(t *testing.T) {
-	cfg, deps := setupDependencies()
+	cfg, deps := setupDependencies(t)
 	cfg.ConvertedAttributes.(*Config).DownloadOnly = true
 	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	// Make sure we created the sensor
 	assert.NotNil(t, sensor)
 
 	// Now make sure it is only downloaded
-	dm := LocalDockerManager{}
+	dm := sensor.(*DockerConfig).manager.(DockerManager)
 
 	images, err := dm.ListImages()
 	assert.NoError(t, err)
@@ -143,19 +126,22 @@ func TestDownloadOnlyImages(t *testing.T) {
 }
 
 func TestRunOnce(t *testing.T) {
-	cfg, deps := setupDependencies()
+	cfg, deps := setupDependencies(t)
 	cfg.ConvertedAttributes.(*Config).RunOnce = true
 
 	sensor, err := NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	// Make sure we created the sensor
 	assert.NotNil(t, sensor)
 
 	// Now make sure it is actually running
-	dm := LocalDockerManager{}
+	logger := logging.NewTestLogger(t)
+	dm, err := NewLocalDockerManager(logger)
+	assert.NoError(t, err)
+
 	containers, err := dm.ListContainers()
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(containers))
@@ -164,16 +150,19 @@ func TestRunOnce(t *testing.T) {
 	assert.NotNil(t, docker)
 
 	// Make sure the has run file has been updated.
-	hasRun, err := docker.image.GetHasRun()
-	assert.NoError(t, err)
-	assert.True(t, hasRun)
+	assert.Equal(t, 1, len(docker.containers))
+	for _, container := range docker.containers {
+		hasRun, err := container.GetHasRun()
+		assert.NoError(t, err)
+		assert.True(t, hasRun)
+	}
 
 	sensor.Close(context.Background())
 
 	// Now create a new sensor with the same config and make sure it doesn't start a new container
 	sensor, err = NewDockerSensor(context.Background(), deps, cfg, logging.NewTestLogger(t))
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
 
 	// Make sure we created the sensor

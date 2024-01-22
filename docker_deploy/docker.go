@@ -127,23 +127,15 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	dc.runOnce = newConf.RunOnce
 
 	// Check if the image exists locally already
-	repoDigest, err := newConf.GetRepoDigest()
-	if err != nil {
-		return err
-	}
-	imageExists, err := dc.manager.ImageExists(repoDigest)
+	imageExists, err := dc.manager.ImageExists(newConf.RepoDigest)
 	if err != nil {
 		return err
 	}
 
-	imageName, err := newConf.GetImageName()
-	if err != nil {
-		return err
-	}
 	// If the image doesn't exist, pull it
 	if !imageExists {
-		dc.logger.Infof("Image %s does not exist. Pulling...", imageName)
-		err := dc.manager.PullImage(imageName, repoDigest)
+		dc.logger.Infof("Image %s does not exist. Pulling...", newConf.ImageName)
+		err := dc.manager.PullImage(newConf.ImageName, newConf.RepoDigest)
 		if err != nil {
 			return err
 		}
@@ -151,13 +143,13 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 
 	if !dc.downloadOnly {
 		if newConf.ComposeOptions != nil {
-			containers, err := dc.manager.CreateComposeContainers(newConf.ComposeOptions.ImageName, newConf.ComposeOptions.RepoDigest, newConf.ComposeOptions.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
+			containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeOptions.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
 			if err != nil {
 				return err
 			}
 			dc.containers = containers
 		} else if newConf.RunOptions != nil {
-			container, err := dc.manager.CreateContainer(newConf.RunOptions.ImageName, newConf.RunOptions.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
+			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
 			if err != nil {
 				return err
 			}

@@ -18,33 +18,39 @@ This is a module for Viam Robotics to manage docker containers, on your robot, w
 
 ## Config
 
-You can find the entire config in [config.go](docker/config.go#L11-L20).
+You can find the entire config in [config.go](docker_deploy/config.go#L13-L38).
 
 This module can start containers in one of two ways (per-component), using `docker run` or using `docker compose ... up`
 
-### Root Config
+### [Root Config](docker_deploy/config.go#L13-L22)
 |Attribute|Required|Type|Description|
 |---------|--------|----|-----------|
-|run_options|N|RunOptions|Options for starting a container with the equivalent of `docker run`|
-|compose_options|N|ComposeOptions|Options for starting a container (or containers) with the equivalent of `docker compose`|
-|image_name|Y|string|The name of the image on Docker Hub or the full name of the image and registry if not using Docker Hub|
-|repo_digest|Y|string|The digest hash of the image on the repository|
-|run_once|N|bool|Only run the container once|
-|download_only|N|bool|Only download the container, don't attempt to start it|
-|credentials|N|Credentials|Credentials to use for pulling images from a private repository|
+|[run_options](docker_deploy/config.go#L15)|N|RunOptions|Options for starting a container with the equivalent of `docker run`|
+|[compose_options](docker_deploy/config.go#L16)|N|ComposeOptions|Options for starting a container (or containers) with the equivalent of `docker compose`|
+|[image_name](docker_deploy/config.go#L17)|Y|string|The name of the image on Docker Hub or the full name of the image and registry if not using Docker Hub|
+|[repo_digest](docker_deploy/config.go#L18)|Y|string|The digest hash of the image on the repository|
+|[run_once](docker_deploy/config.go#L19)|N|bool|Only run the container once|
+|[download_only](docker_deploy/config.go#L20)|N|bool|Only download the container, don't attempt to start it|
+|[credentials](docker_deploy/config.go#L21)|N|Credentials|Credentials to use for pulling images from a private repository|
 
-### RunOptions
+### [RunOptions](docker_deploy/config.go#L29-L33)
 |Attribute|Required|Type|Description|
 |---------|--------|----|-----------|
-|entry_point_args|N|[]string|The command to pass as the entrypoint to the container|
-|options|N|[]string|Any options to also pass to the container|
+|[entry_point_args](docker_deploy/config.go#L31)|N|[]string|The command to pass as the entrypoint to the container|
+|[options](docker_deploy/config.go#L32)|N|[]string|Any options to also pass to the container|
 
-### ComposeOptions
+### [ComposeOptions](docker_deploy/config.go#L25-L27)
 |Attribute|Required|Type|Description|
 |---------|--------|----|-----------|
-|compose_file|Y|[]string|The contents of the docker compose file, each line of the file is a single entry in the array, whitespace is preserved|
+|[compose_file](docker_deploy/config.go#L26)|Y|[]string|The contents of the docker compose file, each line of the file is a single entry in the array, whitespace is preserved|
 
 _Note: The image tag in the `compose_file` is **required** and **must** match the `image_name` and `repo_digest` provided in the attributes._
+
+### [Credentials](docker_deploy/config.go#L35-L38)
+|Attribute|Required|Type|Description|
+|---------|--------|----|-----------|
+|[username](docker_deploy/config.go#L36)|Y|string|The username to use|
+|[password](docker_deploy/config.go#L37)|Y|string|The password to use|
 
 ---
 

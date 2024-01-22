@@ -7,8 +7,13 @@ import (
 	"go.viam.com/rdk/utils"
 )
 
+var ErrComposeAndRunOptionsSet = errors.New("only one of run_options or compose_options can be set")
 var ErrImageNameRequired = errors.New("image_name is required")
 var ErrRepoDigestRequired = errors.New("repo_digest is required")
+var ErrComposeFileRequired = errors.New("compose_file is required")
+var ErrComposeRepoDigestRequired = errors.New("repo_digest is required in compose_file")
+var ErrUsernameIsRequired = errors.New("credentials.username is required")
+var ErrPasswordIsRequired = errors.New("credentials.password is required")
 
 type Config struct {
 	Attributes     utils.AttributeMap `json:"attributes,omitempty"`
@@ -57,20 +62,20 @@ func (conf *Config) HasChanged(newConf *Config) bool {
 func (conf *Config) Validate(path string) ([]string, error) {
 	var validationErrors []error
 	if conf.RunOptions != nil && conf.ComposeOptions != nil {
-		return nil, errors.New("only one of run_options or compose_options can be set")
+		return nil, ErrComposeAndRunOptionsSet
 	}
 
 	if conf.ImageName == "" {
-		validationErrors = append(validationErrors, errors.New("image_name is required"))
+		validationErrors = append(validationErrors, ErrImageNameRequired)
 	}
 
 	if conf.RepoDigest == "" {
-		validationErrors = append(validationErrors, errors.New("repo_digest is required"))
+		validationErrors = append(validationErrors, ErrRepoDigestRequired)
 	}
 
 	if conf.ComposeOptions != nil {
 		if conf.ComposeOptions.ComposeFile == nil {
-			validationErrors = append(validationErrors, errors.New("compose_file is required"))
+			validationErrors = append(validationErrors, ErrComposeFileRequired)
 		}
 
 		// We need to make sure that the repo digest is contained in the compose file, otherwise running the compose file will pull the latest image
@@ -81,7 +86,16 @@ func (conf *Config) Validate(path string) ([]string, error) {
 			}
 		}
 		if !containsRepoDigest {
-			return nil, errors.New("repo_digest must be in compose_file")
+			return nil, ErrComposeRepoDigestRequired
+		}
+	}
+
+	if conf.Credentials != nil {
+		if conf.Credentials.Username == "" {
+			validationErrors = append(validationErrors, ErrUsernameIsRequired)
+		}
+		if conf.Credentials.Password == "" {
+			validationErrors = append(validationErrors, ErrPasswordIsRequired)
 		}
 	}
 

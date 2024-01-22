@@ -23,14 +23,16 @@ func docker_test_setup(t *testing.T) (resource.Config, resource.Dependencies) {
 		Model: Model,
 		API:   sensor.API,
 		ConvertedAttributes: &Config{
-			ImageName:  "ubuntu",
-			RepoDigest: "sha256:218bb51abbd1864df8be26166f847547b3851a89999ca7bfceb85ca9b5d2e95d",
-			ComposeFile: []string{
-				"services:",
-				"  app:",
-				"    image: ubuntu@sha256:218bb51abbd1864df8be26166f847547b3851a89999ca7bfceb85ca9b5d2e95d",
-				"    command: sleep 2",
-				"    working_dir: /root",
+			ComposeOptions: &ComposeOptions{
+				ImageName:  "ubuntu",
+				RepoDigest: "sha256:218bb51abbd1864df8be26166f847547b3851a89999ca7bfceb85ca9b5d2e95d",
+				ComposeFile: []string{
+					"services:",
+					"  app:",
+					"    image: ubuntu@sha256:218bb51abbd1864df8be26166f847547b3851a89999ca7bfceb85ca9b5d2e95d",
+					"    command: sleep 2",
+					"    working_dir: /root",
+				},
 			},
 		},
 	}

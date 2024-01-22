@@ -27,6 +27,7 @@ type DockerConfig struct {
 	wg           sync.WaitGroup
 	downloadOnly bool
 	runOnce      bool
+	conf         Config
 }
 
 func init() {
@@ -39,18 +40,12 @@ func init() {
 func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
 	logger.Info("Starting Docker Manager Module v0.0.2")
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
-	manager, err := NewLocalDockerManager(logger)
-	if err != nil {
-		defer cancelFunc()
-		return nil, err
-	}
 	b := DockerConfig{
 		Named:      conf.ResourceName().AsNamed(),
 		logger:     logger,
 		cancelCtx:  cancelCtx,
 		cancelFunc: cancelFunc,
 		mu:         sync.RWMutex{},
-		manager:    manager,
 		stop:       make(chan bool, 1),
 		wg:         sync.WaitGroup{},
 		containers: []DockerContainer{},
@@ -71,6 +66,9 @@ func (dc *DockerConfig) Reconfigure(ctx context.Context, _ resource.Dependencies
 	if err != nil {
 		return err
 	}
+	defer func() {
+		dc.conf = *newConf
+	}()
 
 	// In case the module has changed name
 	dc.Named = conf.ResourceName().AsNamed()
@@ -85,6 +83,27 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	// If image exists and is not running, start it.
 	// If image does not exist, pull it
 	// Start image
+
+	// Let's try to be efficient and only make changes if changes happened.
+	if !dc.conf.HasChanged(newConf) {
+		return nil
+	}
+
+	if dc.manager == nil {
+		if newConf.Credentials != nil {
+			manager, err := NewLocalDockerManagerWithAuth(newConf.Credentials.Username, newConf.Credentials.Password, dc.logger)
+			if err != nil {
+				return err
+			}
+			dc.manager = manager
+		} else {
+			manager, err := NewLocalDockerManager(dc.logger)
+			if err != nil {
+				return err
+			}
+			dc.manager = manager
+		}
+	}
 
 	// Close the existing containers, remove it, and set it to nil
 	// Should download the new image before stopping the old one
@@ -108,33 +127,44 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	dc.runOnce = newConf.RunOnce
 
 	// Check if the image exists locally already
-	imageExists, err := dc.manager.ImageExists(newConf.RepoDigest)
+	repoDigest, err := newConf.GetRepoDigest()
+	if err != nil {
+		return err
+	}
+	imageExists, err := dc.manager.ImageExists(repoDigest)
 	if err != nil {
 		return err
 	}
 
+	imageName, err := newConf.GetImageName()
+	if err != nil {
+		return err
+	}
 	// If the image doesn't exist, pull it
 	if !imageExists {
-		dc.logger.Infof("Image %s does not exist. Pulling...", newConf.ImageName)
-		err := dc.manager.PullImage(newConf.ImageName, newConf.RepoDigest)
+		dc.logger.Infof("Image %s does not exist. Pulling...", imageName)
+		err := dc.manager.PullImage(imageName, repoDigest)
 		if err != nil {
 			return err
 		}
 	}
 
 	if !dc.downloadOnly {
-		if newConf.ComposeFile != nil {
-			containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
+		if newConf.ComposeOptions != nil {
+			containers, err := dc.manager.CreateComposeContainers(newConf.ComposeOptions.ImageName, newConf.ComposeOptions.RepoDigest, newConf.ComposeOptions.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
 			if err != nil {
 				return err
 			}
 			dc.containers = containers
-		} else {
-			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.EntryPointArgs, newConf.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
+		} else if newConf.RunOptions != nil {
+			container, err := dc.manager.CreateContainer(newConf.RunOptions.ImageName, newConf.RunOptions.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
 			if err != nil {
 				return err
 			}
 			dc.containers = []DockerContainer{container}
+		} else {
+			// In theory this is impossible to hit as long as Validate is called and the returned errors are handled properly, but we'll leave it here just in case
+			return errors.New("no run options or compose options specified")
 		}
 	}
 

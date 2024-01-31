@@ -38,7 +38,7 @@ func init() {
 }
 
 func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
-	logger.Info("Starting Docker Manager Module v0.0.2")
+	logger.Info("Starting Docker Manager Module v0.0.3")
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	b := DockerConfig{
 		Named:      conf.ResourceName().AsNamed(),

@@ -214,6 +214,7 @@ func (dc *DockerConfig) getReadings(container DockerContainer) (map[string]inter
 	}
 	return map[string]interface{}{
 		"repoDigest":  container.GetRepoDigest(),
+		"ImageName": dc.conf.ImageName,
 		"imageId":     imageId,
 		"containerId": container.GetContainerId(),
 		"isRunning":   isRunning,
@@ -229,7 +230,13 @@ func (dc *DockerConfig) Readings(ctx context.Context, extra map[string]interface
 			dc.logger.Error(err)
 			continue
 		}
-		resp[container.GetContainerId()] = readings
+		println("-----", readings)
+		println("-----", readings["imageId"] == dc.conf.RepoDigest, readings["imageId"], dc.conf.RepoDigest)
+		if readings["imageId"] == dc.conf.RepoDigest {
+			return readings, nil
+		} else {
+			resp = readings
+		}
 	}
 	return resp, nil
 }

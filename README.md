@@ -98,6 +98,38 @@ Attributes:
 ```
 ---
 
+#### Basic Example with Options and Credentials
+
+Command: `docker run --rm --env DOCKER_API_VERSION=1.41 ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE sleep 15`
+Attributes:
+```
+{
+  "entry_point_args": [
+    "sleep",
+    "15"
+  ],
+  "image_name": "ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE",
+  "repo_digest": "sha256:DIGEST_HERE",
+  "run_options": {
+    "options": [
+      "--rm"
+    ],
+    "entry_point_args": [
+      "sleep",
+      "15"
+    ],
+    "env": [
+      "DOCKER_API_VERSION=1.41"
+    ]
+  },
+  "credentials": {
+    "password": "PASSCODE HERE",
+    "username": "USERNAME HERE"
+  }
+}
+```
+---
+
 ### `docker compose`
 
 #### Sample Config

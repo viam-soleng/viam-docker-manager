@@ -100,7 +100,7 @@ Attributes:
 
 #### Basic Example with Options and Credentials
 
-Command: `docker run --rm --env DOCKER_API_VERSION=1.41 ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE sleep 15`
+Command: `docker run --rm --env ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE sleep 15`
 Attributes:
 ```
 {

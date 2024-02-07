@@ -104,10 +104,6 @@ Command: `docker run --rm --env DOCKER_API_VERSION=1.41 ghcr.io/PATH/TO/PRIVATE/
 Attributes:
 ```
 {
-  "entry_point_args": [
-    "sleep",
-    "15"
-  ],
   "image_name": "ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE",
   "repo_digest": "sha256:DIGEST_HERE",
   "run_options": {
@@ -117,9 +113,6 @@ Attributes:
     "entry_point_args": [
       "sleep",
       "15"
-    ],
-    "env": [
-      "DOCKER_API_VERSION=1.41"
     ]
   },
   "credentials": {

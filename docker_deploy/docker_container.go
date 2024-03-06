@@ -27,7 +27,6 @@ type DockerContainer interface {
 type LocalDockerContainer struct {
 	mu           sync.RWMutex
 	cancelCtx    context.Context
-	cancelFunc   context.CancelFunc
 	logger       logging.Logger
 	dockerClient *client.Client
 
@@ -36,12 +35,11 @@ type LocalDockerContainer struct {
 	RepoDigest string
 }
 
-func NewDockerContainer(dockerClient *client.Client, containerId string, name string, repoDigest string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) DockerContainer {
+func NewDockerContainer(dockerClient *client.Client, containerId string, name string, repoDigest string, logger logging.Logger, cancelCtx context.Context) DockerContainer {
 	return &LocalDockerContainer{
 		mu:           sync.RWMutex{},
 		logger:       logger,
 		cancelCtx:    cancelCtx,
-		cancelFunc:   cancelFunc,
 		dockerClient: dockerClient,
 		Id:           containerId,
 		Name:         name,

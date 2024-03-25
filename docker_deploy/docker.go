@@ -16,18 +16,20 @@ var Model = resource.NewModel("viam-soleng", "manage", "docker")
 
 type DockerConfig struct {
 	resource.Named
-	mu           sync.RWMutex
-	logger       logging.Logger
-	cancelCtx    context.Context
-	cancelFunc   func()
-	containers   []DockerContainer
-	manager      DockerManager
-	watchers     []func()
-	stop         chan bool
-	wg           sync.WaitGroup
-	downloadOnly bool
-	runOnce      bool
-	conf         Config
+	mu                 sync.RWMutex
+	logger             logging.Logger
+	cancelCtx          context.Context
+	cancelFunc         func()
+	containers         []DockerContainer
+	manager            DockerManager
+	watchers           []func()
+	stop               chan bool
+	wg                 sync.WaitGroup
+	reconfigCtx        context.Context
+	reconfigCancelFunc func()
+	downloadOnly       bool
+	runOnce            bool
+	conf               Config
 }
 
 func init() {
@@ -89,6 +91,12 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 		return nil
 	}
 
+	if dc.reconfigCancelFunc != nil {
+		dc.reconfigCancelFunc()
+	}
+
+	dc.reconfigCtx, dc.reconfigCancelFunc = context.WithCancel(dc.cancelCtx)
+
 	if dc.manager == nil {
 		if newConf.Credentials != nil {
 			manager, err := NewLocalDockerManagerWithAuth(newConf.Credentials.Username, newConf.Credentials.Password, dc.logger)
@@ -126,37 +134,52 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 	// Make sure we track if the image is run once only
 	dc.runOnce = newConf.RunOnce
 
+	viamutils.PanicCapturingGo(func() { dc.startDownload(newConf) })
+
+	return nil
+}
+
+func (dc *DockerConfig) startDownload(newConf *Config) {
 	// Check if the image exists locally already
 	imageExists, err := dc.manager.ImageExists(newConf.RepoDigest)
 	if err != nil {
-		return err
+		dc.logger.Error(err)
+		return
 	}
-
 	// If the image doesn't exist, pull it
 	if !imageExists {
 		dc.logger.Infof("Image %s does not exist. Pulling...", newConf.ImageName)
-		err := dc.manager.PullImage(newConf.ImageName, newConf.RepoDigest)
+		err := dc.manager.PullImage(dc.reconfigCtx, newConf.ImageName, newConf.RepoDigest)
 		if err != nil {
-			return err
+			dc.logger.Error(err)
+			return
 		}
 	}
 
+	dc.finishReconfigure(newConf)
+}
+
+func (dc *DockerConfig) finishReconfigure(newConf *Config) {
 	if !dc.downloadOnly {
 		if newConf.ComposeOptions != nil {
-			containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeOptions.ComposeFile, dc.logger, dc.cancelCtx, dc.cancelFunc)
+			containers, err := dc.manager.CreateComposeContainers(newConf.ImageName, newConf.RepoDigest, newConf.ComposeOptions.ComposeFile, dc.logger, dc.reconfigCtx)
 			if err != nil {
-				return err
+				dc.logger.Error(err)
+				return
 			}
 			dc.containers = containers
 		} else if newConf.RunOptions != nil {
-			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, dc.logger, dc.cancelCtx, dc.cancelFunc)
+			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, dc.logger, dc.reconfigCtx)
 			if err != nil {
-				return err
+				dc.logger.Error(err)
+				return
 			}
 			dc.containers = []DockerContainer{container}
 		} else {
 			// In theory this is impossible to hit as long as Validate is called and the returned errors are handled properly, but we'll leave it here just in case
-			return errors.New("no run options or compose options specified")
+			err := errors.New("no run options or compose options specified")
+			dc.logger.Error(err)
+			return
 		}
 	}
 
@@ -194,9 +217,7 @@ func (dc *DockerConfig) reconfigure(newConf *Config) error {
 			}
 			viamutils.PanicCapturingGo(dc.watchers[i])
 		}
-
 	}
-	return nil
 }
 
 func (dc *DockerConfig) getReadings(container DockerContainer) (map[string]interface{}, error) {
@@ -214,7 +235,7 @@ func (dc *DockerConfig) getReadings(container DockerContainer) (map[string]inter
 	}
 	return map[string]interface{}{
 		"repoDigest":  container.GetRepoDigest(),
-		"ImageName": dc.conf.ImageName,
+		"ImageName":   dc.conf.ImageName,
 		"imageId":     imageId,
 		"containerId": container.GetContainerId(),
 		"isRunning":   isRunning,

@@ -64,10 +64,10 @@ func TestListImages(t *testing.T) {
 
 func TestGetContainerImageDigest(t *testing.T) {
 	logger, dm := docker_manager_test_setup(t)
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	err := dm.PullImage(imageName, repoDigest)
+	ctx, _ := context.WithCancel(context.Background())
+	err := dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
-	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx, cancelFunc)
+	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx)
 	assert.NoError(t, err)
 	digest, err := dm.GetContainerImageDigest(container.GetContainerId())
 	if err != nil {
@@ -79,12 +79,13 @@ func TestGetContainerImageDigest(t *testing.T) {
 
 // TODO: This test will fail until we start the container. We need to add more setup code.
 func TestGetContainersRunningImage(t *testing.T) {
+	ctx, _ := context.WithCancel(context.Background())
+
 	logger, dm := docker_manager_test_setup(t)
-	err := dm.PullImage(imageName, repoDigest)
+	err := dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
-	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx, cancelFunc)
+	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx)
 	assert.NoError(t, err)
 
 	err = dm.StartContainer(container.GetContainerId())
@@ -102,13 +103,15 @@ func TestGetContainersRunningImage(t *testing.T) {
 }
 
 func TestImageExists(t *testing.T) {
+	ctx, _ := context.WithCancel(context.Background())
+
 	_, dm := docker_manager_test_setup(t)
 
 	exists, err := dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 
-	err = dm.PullImage(imageName, repoDigest)
+	err = dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
 	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
@@ -116,13 +119,15 @@ func TestImageExists(t *testing.T) {
 }
 
 func TestImagePull(t *testing.T) {
+	ctx, _ := context.WithCancel(context.Background())
+
 	_, dm := docker_manager_test_setup(t)
 
 	exists, err := dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 
-	err = dm.PullImage(imageName, repoDigest)
+	err = dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
 	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
@@ -130,13 +135,15 @@ func TestImagePull(t *testing.T) {
 }
 
 func TestImageRemove(t *testing.T) {
+	ctx, _ := context.WithCancel(context.Background())
+
 	_, dm := docker_manager_test_setup(t)
 
 	exists, err := dm.ImageExists(repoDigest)
 	assert.NoError(t, err)
 	assert.False(t, exists)
 
-	err = dm.PullImage(imageName, repoDigest)
+	err = dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
 	exists, err = dm.ImageExists(repoDigest)
 	assert.NoError(t, err)

@@ -25,8 +25,8 @@ var ErrContainerNotFound = errors.New("container not found")
 
 type DockerManager interface {
 	ListContainers() ([]DockerContainerDetails, error)
-	CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) (DockerContainer, error)
-	CreateComposeContainers(imageName string, repoDigest string, composeFile []string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) ([]DockerContainer, error)
+	CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context) (DockerContainer, error)
+	CreateComposeContainers(imageName string, repoDigest string, composeFile []string, logger logging.Logger, cancelCtx context.Context) ([]DockerContainer, error)
 
 	ListImages() ([]DockerImageDetails, error)
 	GetImageDetails(imageId string) (*DockerImageDetails, error)
@@ -34,7 +34,7 @@ type DockerManager interface {
 	GetContainerImageDigest(containerId string) (string, error)
 	GetContainersRunningImage(imageDigest string) ([]DockerContainerDetails, error)
 
-	PullImage(imageName string, repoDigest string) error
+	PullImage(ctx context.Context, imageName string, repoDigest string) error
 	ImageExists(repoDigest string) (bool, error)
 	RemoveImageByImageId(imageId string) error
 	RemoveImageByRepoDigest(repoDigest string) error
@@ -246,7 +246,7 @@ func (dm *LocalDockerManager) GetContainersRunningImage(repoDigest string) ([]Do
 	return containersRunningImage, nil
 }
 
-func (dm *LocalDockerManager) PullImage(imageName string, repoDigest string) error {
+func (dm *LocalDockerManager) PullImage(ctx context.Context, imageName string, repoDigest string) error {
 	dm.logger.Debugf("Pulling image %s %s", imageName, repoDigest)
 	imagePullOptions := docker_types.ImagePullOptions{}
 
@@ -255,7 +255,7 @@ func (dm *LocalDockerManager) PullImage(imageName string, repoDigest string) err
 			RegistryAuth: base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"username":"%s","password":"%s"}`, dm.username, dm.password))),
 		}
 	}
-	rc, err := dm.dockerClient.ImagePull(context.Background(), fmt.Sprintf("%s@%s", imageName, repoDigest), imagePullOptions)
+	rc, err := dm.dockerClient.ImagePull(ctx, fmt.Sprintf("%s@%s", imageName, repoDigest), imagePullOptions)
 	if err != nil {
 		return err
 	}
@@ -279,7 +279,7 @@ func (dm *LocalDockerManager) PullImage(imageName string, repoDigest string) err
 	return nil
 }
 
-func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) (DockerContainer, error) {
+func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context) (DockerContainer, error) {
 	config := &container.Config{
 		Image: fmt.Sprintf("%s@%s", imageName, repoDigest),
 		Cmd:   entry_point_args,
@@ -294,11 +294,11 @@ func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest strin
 		logger.Warnf("Create container warning: %s", w)
 	}
 
-	c := NewDockerContainer(dm.dockerClient, resp.ID, imageName, repoDigest, logger, cancelCtx, cancelFunc)
+	c := NewDockerContainer(dm.dockerClient, resp.ID, imageName, repoDigest, logger, cancelCtx)
 	return c, nil
 }
 
-func (dm *LocalDockerManager) CreateComposeContainers(imageName string, repoDigest string, composeFile []string, logger logging.Logger, cancelCtx context.Context, cancelFunc context.CancelFunc) ([]DockerContainer, error) {
+func (dm *LocalDockerManager) CreateComposeContainers(imageName string, repoDigest string, composeFile []string, logger logging.Logger, cancelCtx context.Context) ([]DockerContainer, error) {
 	ctx := context.Background()
 	sanitizedImageName := strings.Replace(imageName, "/", "-", -1)
 	composeFileName := fmt.Sprintf("%s/%s-%s.yml", os.TempDir(), "docker-compose", sanitizedImageName)
@@ -349,7 +349,7 @@ func (dm *LocalDockerManager) CreateComposeContainers(imageName string, repoDige
 		}
 
 		dm.logger.Infof("Container %s has been created", resp.ID)
-		containers = append(containers, NewDockerContainer(dm.dockerClient, resp.ID, imageName, repoDigest, logger, cancelCtx, cancelFunc))
+		containers = append(containers, NewDockerContainer(dm.dockerClient, resp.ID, imageName, repoDigest, logger, cancelCtx))
 	}
 	return containers, nil
 }

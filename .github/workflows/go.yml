@@ -9,6 +9,10 @@ on:
     types: [published]
   pull_request_target:
     branches: [ "main" ]
+permissions:
+  contents: write
+env:
+  binary_file_name: viam-docker-manager
 
 jobs:
 
@@ -40,16 +44,21 @@ jobs:
         go-version: '1.21'
 
     - name: Build
-      run: go build -o viam-docker-manager -tags osusergo,netgo -v .
+      run: go build -o ${{ env.binary_file_name }} -tags osusergo,netgo -v .
 
     - name: Package
-      run: tar -zcf viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}.tar.gz viam-docker-manager
+      run: tar -zcf ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}.tar.gz ${{ env.binary_file_name }}
     
     - uses: actions/upload-artifact@v3
       with:
-        name: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}
-        path: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}.tar.gz
-
+        name: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}
+        path: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}.tar.gz
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        draft: true
+        files: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}.tar.gz
   # test:
   #   runs-on: ubuntu-latest
   #   steps:
@@ -97,11 +106,11 @@ jobs:
 
     - uses: actions/download-artifact@v3
       with:
-        name: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}
+        name: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}
     - name: Upload
       uses: viamrobotics/upload-module@main
       with:
-        module-path: viam-docker-manager-${{ env.os }}-${{ env.GOARCH }}.tar.gz
+        module-path: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}.tar.gz
         platform: ${{ env.GOOS }}/${{ env.GOARCH }}
         org-id: 3a94d2f9-082b-44ad-8569-a9d8a1330050
         version: ${{ github.event_name == 'release' && github.ref_name || format('0.0.0-{0}.{1}', github.ref_name, github.run_number) }} # <-- see 'Versioning' section below for explanation

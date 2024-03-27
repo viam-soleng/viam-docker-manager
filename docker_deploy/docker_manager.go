@@ -144,7 +144,7 @@ func (dm *LocalDockerManager) RemoveImageByRepoDigest(repoDigest string) error {
 }
 
 func (dm *LocalDockerManager) ListContainers() ([]DockerContainerDetails, error) {
-	c, err := dm.dockerClient.ContainerList(context.Background(), docker_types.ContainerListOptions{All: true})
+	c, err := dm.dockerClient.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +369,7 @@ func (dm *LocalDockerManager) ImageExists(repoDigest string) (bool, error) {
 }
 
 func (dm *LocalDockerManager) StartContainer(containerId string) error {
-	return dm.dockerClient.ContainerStart(context.Background(), containerId, docker_types.ContainerStartOptions{})
+	return dm.dockerClient.ContainerStart(context.Background(), containerId, container.StartOptions{})
 }
 
 func (dm *LocalDockerManager) StopContainer(containerId string) error {
@@ -377,5 +377,5 @@ func (dm *LocalDockerManager) StopContainer(containerId string) error {
 }
 
 func (dm *LocalDockerManager) RemoveContainer(containerId string) error {
-	return dm.dockerClient.ContainerRemove(context.Background(), containerId, docker_types.ContainerRemoveOptions{Force: true})
+	return dm.dockerClient.ContainerRemove(context.Background(), containerId, container.RemoveOptions{Force: true})
 }

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"go.viam.com/rdk/components/sensor"
@@ -43,10 +43,10 @@ func docker_test_setup(t *testing.T) (resource.Config, resource.Dependencies) {
 		if err != nil {
 			t.Error(err)
 		}
-		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+		containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
 		assert.NoError(t, err)
-		for _, container := range containers {
-			cli.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{Force: true})
+		for _, c := range containers {
+			cli.ContainerRemove(context.Background(), c.ID, container.RemoveOptions{Force: true})
 		}
 		t.Log("Done cleaning up docker containers")
 	})
@@ -76,7 +76,7 @@ func TestImageStarts(t *testing.T) {
 	cli := sensor.(*DockerConfig).manager.(*LocalDockerManager).dockerClient
 	timeout := time.Now().Add(30 * time.Second)
 	for {
-		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
+		containers, err := cli.ContainerList(context.Background(), container.ListOptions{})
 		assert.NoError(t, err)
 		if len(containers) > 0 {
 			break
@@ -86,7 +86,7 @@ func TestImageStarts(t *testing.T) {
 			break
 		}
 	}
-	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{})
+	containers, err := cli.ContainerList(context.Background(), container.ListOptions{})
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(containers))
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/stretchr/testify/assert"
 	"go.viam.com/rdk/logging"
@@ -23,10 +23,10 @@ func docker_manager_test_setup(t *testing.T) (logging.Logger, DockerManager) {
 		if err != nil {
 			t.Error(err)
 		}
-		containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+		containers, err := cli.ContainerList(context.Background(), container.ListOptions{All: true})
 		assert.NoError(t, err)
-		for _, container := range containers {
-			cli.ContainerRemove(context.Background(), container.ID, types.ContainerRemoveOptions{Force: true})
+		for _, c := range containers {
+			cli.ContainerRemove(context.Background(), c.ID, container.RemoveOptions{Force: true})
 		}
 		if imageExists, _ := dm.ImageExists(repoDigest); imageExists {
 			err = dm.RemoveImageByRepoDigest(repoDigest)

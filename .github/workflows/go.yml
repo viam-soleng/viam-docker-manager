@@ -55,7 +55,7 @@ jobs:
         path: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}.tar.gz
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
+      if: (startsWith(github.ref, 'refs/tags/') && github.event_name != 'release')
       with:
         draft: true
         files: ${{ env.binary_file_name }}-${{ env.os }}-${{ env.GOARCH }}.tar.gz

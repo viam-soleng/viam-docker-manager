@@ -301,6 +301,8 @@ func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest strin
 			if v, ok := value.(bool); ok {
 				hostConfig.AutoRemove = v
 			}
+		default:
+			dm.logger.Errorf("No case for %s -- %s... won't be passed to container configuration", key, value)
 		}
 	}
 

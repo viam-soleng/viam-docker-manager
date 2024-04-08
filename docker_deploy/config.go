@@ -2,6 +2,7 @@ package docker_deploy
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 
 	"go.viam.com/rdk/utils"
@@ -32,9 +33,10 @@ type ComposeOptions struct {
 }
 
 type RunOptions struct {
-	Env            []string `json:"env"`
-	EntryPointArgs []string `json:"entry_point_args"`
-	Options        []string `json:"options"`
+	Env            []string               `json:"env"`
+	EntryPointArgs []string               `json:"entry_point_args"`
+	Options        map[string]interface{} `json:"options"`
+	HostOptions    map[string]interface{} `json:"host_options"`
 }
 
 type Credentials struct {
@@ -50,7 +52,8 @@ func (conf *Config) HasChanged(newConf *Config) bool {
 	if conf.RunOptions != nil && newConf.RunOptions != nil {
 		return !StringSliceEqual(conf.RunOptions.Env, newConf.RunOptions.Env) ||
 			!StringSliceEqual(conf.RunOptions.EntryPointArgs, newConf.RunOptions.EntryPointArgs) ||
-			!StringSliceEqual(conf.RunOptions.Options, newConf.RunOptions.Options) ||
+			!mapsEqual(conf.RunOptions.Options, newConf.RunOptions.Options) ||
+			!mapsEqual(conf.RunOptions.HostOptions, newConf.RunOptions.HostOptions) ||
 			(conf.Credentials != nil && newConf.Credentials != nil && (conf.Credentials.Username != newConf.Credentials.Username || conf.Credentials.Password != newConf.Credentials.Password))
 	} else if conf.ComposeOptions != nil && newConf.ComposeOptions != nil {
 		return !StringSliceEqual(conf.ComposeOptions.ComposeFile, newConf.ComposeOptions.ComposeFile) ||
@@ -112,5 +115,47 @@ func StringSliceEqual(a, b []string) bool {
 			return false
 		}
 	}
+	return true
+}
+
+// mapsEqual checks if two maps are equal
+func mapsEqual(a, b map[string]interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for key, valueA := range a {
+		valueB, ok := b[key]
+		if !ok {
+			return false
+		}
+
+		// Different Types
+		if reflect.TypeOf(valueA) != reflect.TypeOf(valueB) {
+			return false
+		}
+
+		// Different Values
+		switch valueA := valueA.(type) {
+		case string:
+			if valueB, ok := valueB.(string); !ok || valueA != valueB {
+				return false
+			}
+		case bool:
+			if valueB, ok := valueB.(bool); !ok || valueA != valueB {
+				return false
+			}
+		case int, int32, int64, float32, float64:
+			if !reflect.DeepEqual(valueA, valueB) {
+				return false
+			}
+		default:
+			// If the type is not explicitly handled above, use reflect.DeepEqual
+			if !reflect.DeepEqual(valueA, valueB) {
+				return false
+			}
+		}
+	}
+
 	return true
 }

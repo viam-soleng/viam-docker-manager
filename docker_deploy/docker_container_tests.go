@@ -14,7 +14,7 @@ func TestGetImageId(t *testing.T) {
 	dm, err := NewLocalDockerManager(logger)
 	assert.NoError(t, err)
 
-	container, err := dm.CreateContainer("mcr.microsoft.com/dotnet/samples", "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", []string{}, []string{}, logger, cancelCtx)
+	container, err := dm.CreateContainer("mcr.microsoft.com/dotnet/samples", "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1", []string{}, map[string]interface{}{}, map[string]interface{}{}, logger, cancelCtx)
 	assert.NoError(t, err, "Error should be nil")
 
 	imageId, err := container.GetImageId()
@@ -29,7 +29,7 @@ func TestIsRunning(t *testing.T) {
 	dm, err := NewLocalDockerManager(logger)
 	assert.NoError(t, err)
 
-	container, err := dm.CreateContainer("ubuntu", "sha256:2b7412e6465c3c7fc5bb21d3e6f1917c167358449fecac8176c6e496e5c1f05f", []string{}, []string{}, logger, cancelCtx)
+	container, err := dm.CreateContainer("ubuntu", "sha256:2b7412e6465c3c7fc5bb21d3e6f1917c167358449fecac8176c6e496e5c1f05f", []string{}, map[string]interface{}{}, map[string]interface{}{}, logger, cancelCtx)
 	assert.NoError(t, err, "Error should be nil")
 
 	isRunning, err := container.IsRunning()

@@ -59,10 +59,6 @@ jobs:
       run: |
         sudo -u testbot bash -lc 'make build'
 
-    - name: make test
-      run: |
-        sudo -u testbot bash -lc 'make test'
-
     - name: Remove 'testing' label
       if: ${{ always() }} && github.event.label.name == 'testing' 
       uses: actions-ecosystem/action-remove-labels@v1

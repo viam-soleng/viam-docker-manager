@@ -16,7 +16,7 @@ var ErrComposeRepoDigestRequired = errors.New("repo_digest is required in compos
 var ErrUsernameIsRequired = errors.New("credentials.username is required")
 var ErrPasswordIsRequired = errors.New("credentials.password is required")
 var ErrAutoRemoveType = errors.New("host_options 'AutoRemove' parameter must be a boolean")
-var ErrBindType = rrors.New("host_options 'Binds' parameter must include a non-empty string")
+var ErrBindType = errors.New("host_options 'Binds' parameter must include a non-empty string")
 var ErrNetworkModeType = errors.New("host_options 'Network Mode' parameter must include a non-empty string")
 
 type Config struct {

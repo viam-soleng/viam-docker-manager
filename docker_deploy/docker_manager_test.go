@@ -23,8 +23,8 @@ var options = map[string]interface{}{
 
 var hostOptions = map[string]interface{}{
 	"NetworkMode": "bridge",
-	"AutoRemove":  "true",
-	"Privileged":  "false",
+	"AutoRemove":  true,
+	"Privileged":  false,
 	"ShmSize":     "67108864", // 64MB in bytes
 }
 

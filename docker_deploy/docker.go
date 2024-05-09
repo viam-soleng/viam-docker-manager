@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/viam-soleng/viam-docker-manager/utils"
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
@@ -40,7 +41,7 @@ func init() {
 }
 
 func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
-	logger.Info("Starting Docker Manager Module...")
+	logger.Infof("Starting Docker Manager Component %v", utils.Version)
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	b := DockerConfig{
 		Named:      conf.ResourceName().AsNamed(),

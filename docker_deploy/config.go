@@ -15,6 +15,9 @@ var ErrComposeFileRequired = errors.New("compose_file is required")
 var ErrComposeRepoDigestRequired = errors.New("repo_digest is required in compose_file")
 var ErrUsernameIsRequired = errors.New("credentials.username is required")
 var ErrPasswordIsRequired = errors.New("credentials.password is required")
+var ErrAutoRemoveType = errors.New("host_options 'AutoRemove' parameter must be a boolean")
+var ErrBindType = rrors.New("host_options 'Binds' parameter must include a non-empty string")
+var ErrNetworkModeType = errors.New("host_options 'Network Mode' parameter must include a non-empty string")
 
 type Config struct {
 	Attributes     utils.AttributeMap `json:"attributes,omitempty"`
@@ -50,13 +53,13 @@ func (conf *Config) HasChanged(newConf *Config) bool {
 		return true
 	}
 	if conf.RunOptions != nil && newConf.RunOptions != nil {
-		return !StringSliceEqual(conf.RunOptions.Env, newConf.RunOptions.Env) ||
-			!StringSliceEqual(conf.RunOptions.EntryPointArgs, newConf.RunOptions.EntryPointArgs) ||
+		return !stringSliceEqual(conf.RunOptions.Env, newConf.RunOptions.Env) ||
+			!stringSliceEqual(conf.RunOptions.EntryPointArgs, newConf.RunOptions.EntryPointArgs) ||
 			!mapsEqual(conf.RunOptions.Options, newConf.RunOptions.Options) ||
 			!mapsEqual(conf.RunOptions.HostOptions, newConf.RunOptions.HostOptions) ||
 			(conf.Credentials != nil && newConf.Credentials != nil && (conf.Credentials.Username != newConf.Credentials.Username || conf.Credentials.Password != newConf.Credentials.Password))
 	} else if conf.ComposeOptions != nil && newConf.ComposeOptions != nil {
-		return !StringSliceEqual(conf.ComposeOptions.ComposeFile, newConf.ComposeOptions.ComposeFile) ||
+		return !stringSliceEqual(conf.ComposeOptions.ComposeFile, newConf.ComposeOptions.ComposeFile) ||
 			(conf.Credentials != nil && newConf.Credentials != nil && (conf.Credentials.Username != newConf.Credentials.Username || conf.Credentials.Password != newConf.Credentials.Password))
 	}
 	return false
@@ -93,6 +96,21 @@ func (conf *Config) Validate(path string) ([]string, error) {
 		}
 	}
 
+	if conf.RunOptions != nil {
+		host_opts := conf.RunOptions.HostOptions
+		if host_opts != nil && len(host_opts) != 0 {
+			if bind, ok := host_opts["Binds"].(string); !ok || bind == "" {
+				validationErrors = append(validationErrors, ErrBindType)
+			}
+			if networkMode, ok := host_opts["NetworkMode"].(string); !ok || networkMode == "" {
+				validationErrors = append(validationErrors, ErrNetworkModeType)
+			}
+			if _, ok := host_opts["AutoRemove"].(bool); !ok {
+				validationErrors = append(validationErrors, ErrAutoRemoveType)
+			}
+		}
+	}
+
 	if conf.Credentials != nil {
 		if conf.Credentials.Username == "" {
 			validationErrors = append(validationErrors, ErrUsernameIsRequired)
@@ -106,7 +124,7 @@ func (conf *Config) Validate(path string) ([]string, error) {
 }
 
 // StringSliceEqual checks if two string slices are equal
-func StringSliceEqual(a, b []string) bool {
+func stringSliceEqual(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -120,42 +138,5 @@ func StringSliceEqual(a, b []string) bool {
 
 // mapsEqual checks if two maps are equal
 func mapsEqual(a, b map[string]interface{}) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for key, valueA := range a {
-		valueB, ok := b[key]
-		if !ok {
-			return false
-		}
-
-		// Different Types
-		if reflect.TypeOf(valueA) != reflect.TypeOf(valueB) {
-			return false
-		}
-
-		// Different Values
-		switch valueA := valueA.(type) {
-		case string:
-			if valueB, ok := valueB.(string); !ok || valueA != valueB {
-				return false
-			}
-		case bool:
-			if valueB, ok := valueB.(bool); !ok || valueA != valueB {
-				return false
-			}
-		case int, int32, int64, float32, float64:
-			if !reflect.DeepEqual(valueA, valueB) {
-				return false
-			}
-		default:
-			// If the type is not explicitly handled above, use reflect.DeepEqual
-			if !reflect.DeepEqual(valueA, valueB) {
-				return false
-			}
-		}
-	}
-
-	return true
+	return reflect.DeepEqual(a, b)
 }

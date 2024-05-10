@@ -36,8 +36,9 @@ This module can start containers in one of two ways (per-component), using `dock
 ### [RunOptions](docker_deploy/config.go#L34-L38)
 |Attribute|Required|Type|Description|
 |---------|--------|----|-----------|
-|[entry_point_args](docker_deploy/config.go#L36)|N|[]string|The command to pass as the entrypoint to the container|
-|[options](docker_deploy/config.go#L37)|N|[]string|Any options to also pass to the container|
+|[entry_point_args](docker_deploy/config.go#L35)|N|[]string|The command to pass as the entrypoint to the container|
+|[options](docker_deploy/config.go#L35)|N|[]string|Any [options](https://pkg.go.dev/github.com/docker/docker@v26.0.0+incompatible/api/types/container#Config) to also pass to the container|
+|[host_options](docker_deploy/config.go#L35)|N|[]string|Any [options](https://pkg.go.dev/github.com/docker/docker@v26.0.0+incompatible/api/types/container#HostConfig) to also pass to the container|
 
 ### [ComposeOptions](docker_deploy/config.go#L30-L33)
 |Attribute|Required|Type|Description|
@@ -63,7 +64,7 @@ Given the following `docker run` command examples, here is how they are translat
 #### Basic Example
 
 Command: `docker run ubuntu echo hi`
-Attributes:
+<br> Attributes:
 ```
 {
     "image_name": "ubuntu",
@@ -77,10 +78,10 @@ Attributes:
 }
 ```
 
-#### Basic Example with Options
+#### Basic Examples with Options
 
 Command: `docker run --rm ubuntu echo hi`
-Attributes:
+<br> Attributes:
 ```
 {
     "image_name": "ubuntu",
@@ -90,9 +91,29 @@ Attributes:
             "echo",
             "hi"
         ],
-        options: [
-            "--rm"
-        ]
+        "host_options": {
+          "AutoRemove": true
+      }
+    }
+}
+```
+
+Command: `docker run --rm --volume viam:/opt/ws/install --network host ubuntu echo hi`
+<br> Attributes:
+```
+{
+  "image_name": "ubuntu",
+  "repo_digest": "sha256:04714a1bfbb2d8b5390b5cc0c055e48ebfabd4aa395821b860730ff3277ed74a",
+  "run_options": {
+    "entry_point_args": [
+      "echo",
+      "hi"
+    ],
+    "host_options": {
+      "Binds": "viam:/opt/ws/install",
+      "NetworkMode": "host",
+      "AutoRemove": true
+      }
     }
 }
 ```
@@ -101,15 +122,15 @@ Attributes:
 #### Basic Example with Options and Credentials
 
 Command: `docker run --rm --env ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE sleep 15`
-Attributes:
+<br> Attributes:
 ```
 {
   "image_name": "ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE",
   "repo_digest": "sha256:DIGEST_HERE",
   "run_options": {
-    "options": [
-      "--rm"
-    ],
+    "host_options": {
+      "AutoRemove": true
+      }
     "entry_point_args": [
       "sleep",
       "15"
@@ -122,6 +143,40 @@ Attributes:
 }
 ```
 ---
+---
+
+#### Basic Example of Module Env Variable Setup 
+
+Command: `DOCKER_API_VERSION="1.41" docker run ubuntu echo hi`
+<br> Component Attributes:
+```
+{
+    "image_name": "ubuntu",
+    "repo_digest": "sha256:04714a1bfbb2d8b5390b5cc0c055e48ebfabd4aa395821b860730ff3277ed74a",
+    "run_options": {
+        "entry_point_args": [
+            "echo",
+            "hi"
+        ]
+    }
+}
+```
+<br> Module Attributes:
+```
+"modules": [
+  {
+    "version": "0.0.5",
+    "type": "registry",
+    "name": "viam-soleng_viam-docker-manager",
+    "module_id": "viam-soleng:viam-docker-manager",
+    "env": {
+        "DOCKER_API_VERSION": "1.41"
+      }
+    }
+  ]
+```
+---
+
 
 ### `docker compose`
 

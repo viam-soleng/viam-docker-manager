@@ -25,7 +25,7 @@ var ErrContainerNotFound = errors.New("container not found")
 
 type DockerManager interface {
 	ListContainers() ([]DockerContainerDetails, error)
-	CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context) (DockerContainer, error)
+	CreateContainer(imageName string, repoDigest string, entry_point_args []string, options map[string]interface{}, host_options map[string]interface{}, logger logging.Logger, cancelCtx context.Context) (DockerContainer, error)
 	CreateComposeContainers(imageName string, repoDigest string, composeFile []string, logger logging.Logger, cancelCtx context.Context) ([]DockerContainer, error)
 
 	ListImages() ([]DockerImageDetails, error)
@@ -279,13 +279,34 @@ func (dm *LocalDockerManager) PullImage(ctx context.Context, imageName string, r
 	return nil
 }
 
-func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest string, entry_point_args []string, options []string, logger logging.Logger, cancelCtx context.Context) (DockerContainer, error) {
+func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest string, entry_point_args []string, options map[string]interface{}, host_options map[string]interface{}, logger logging.Logger, cancelCtx context.Context) (DockerContainer, error) {
 	config := &container.Config{
 		Image: fmt.Sprintf("%s@%s", imageName, repoDigest),
 		Cmd:   entry_point_args,
 	}
 
-	resp, err := dm.dockerClient.ContainerCreate(cancelCtx, config, nil, nil, nil, "")
+	hostConfig := &container.HostConfig{}
+
+	for key, value := range host_options {
+		switch key {
+		case "NetworkMode":
+			if v, ok := value.(string); ok {
+				hostConfig.NetworkMode = container.NetworkMode(v)
+			}
+		case "Binds":
+			if v, ok := value.(string); ok {
+				hostConfig.Binds = strings.Split(v, ",")
+			}
+		case "AutoRemove":
+			if v, ok := value.(bool); ok {
+				hostConfig.AutoRemove = v
+			}
+		default:
+			dm.logger.Errorf("No case for %s -- %s... won't be passed to container configuration", key, value)
+		}
+	}
+
+	resp, err := dm.dockerClient.ContainerCreate(cancelCtx, config, hostConfig, nil, nil, "")
 	if err != nil {
 		return nil, err
 	}

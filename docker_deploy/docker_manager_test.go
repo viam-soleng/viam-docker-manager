@@ -13,6 +13,21 @@ import (
 var imageName = "mcr.microsoft.com/dotnet/samples"
 var repoDigest = "sha256:d41fe80991d7c26ad43b052bb87c68a216a365c143623a62b5a5963fcdb77eb1"
 
+var options = map[string]interface{}{
+	"Hostname":   "my-container",
+	"User":       "root",
+	"Image":      "alpine",
+	"WorkingDir": "/app",
+	"StopSignal": "SIGTERM",
+}
+
+var hostOptions = map[string]interface{}{
+	"NetworkMode": "bridge",
+	"AutoRemove":  true,
+	"Privileged":  false,
+	"ShmSize":     "67108864", // 64MB in bytes
+}
+
 func docker_manager_test_setup(t *testing.T) (logging.Logger, DockerManager) {
 	logger := logging.NewTestLogger(t)
 	dm, err := NewLocalDockerManager(logger)
@@ -67,7 +82,8 @@ func TestGetContainerImageDigest(t *testing.T) {
 	ctx, _ := context.WithCancel(context.Background())
 	err := dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
-	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx)
+
+	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, options, hostOptions, logger, ctx)
 	assert.NoError(t, err)
 	digest, err := dm.GetContainerImageDigest(container.GetContainerId())
 	if err != nil {
@@ -85,7 +101,7 @@ func TestGetContainersRunningImage(t *testing.T) {
 	err := dm.PullImage(ctx, imageName, repoDigest)
 	assert.NoError(t, err)
 
-	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, []string{}, logger, ctx)
+	container, err := dm.CreateContainer(imageName, repoDigest, []string{"sleep", "1000"}, options, hostOptions, logger, ctx)
 	assert.NoError(t, err)
 
 	err = dm.StartContainer(container.GetContainerId())

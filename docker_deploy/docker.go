@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/viam-soleng/viam-docker-manager/utils"
 	"go.viam.com/rdk/components/sensor"
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
@@ -40,7 +41,7 @@ func init() {
 }
 
 func NewDockerSensor(ctx context.Context, deps resource.Dependencies, conf resource.Config, logger logging.Logger) (sensor.Sensor, error) {
-	logger.Info("Starting Docker Manager Module v0.0.3")
+	logger.Infof("Starting Docker Manager Component %v", utils.Version)
 	cancelCtx, cancelFunc := context.WithCancel(context.Background())
 	b := DockerConfig{
 		Named:      conf.ResourceName().AsNamed(),
@@ -169,7 +170,7 @@ func (dc *DockerConfig) finishReconfigure(newConf *Config) {
 			}
 			dc.containers = containers
 		} else if newConf.RunOptions != nil {
-			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, dc.logger, dc.reconfigCtx)
+			container, err := dc.manager.CreateContainer(newConf.ImageName, newConf.RepoDigest, newConf.RunOptions.EntryPointArgs, newConf.RunOptions.Options, newConf.RunOptions.HostOptions, dc.logger, dc.reconfigCtx)
 			if err != nil {
 				dc.logger.Error(err)
 				return

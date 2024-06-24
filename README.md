@@ -77,6 +77,7 @@ Command: `docker run ubuntu echo hi`
     }
 }
 ```
+---
 
 #### Basic Examples with Options
 
@@ -97,6 +98,7 @@ Command: `docker run --rm ubuntu echo hi`
     }
 }
 ```
+---
 
 Command: `docker run --rm --volume viam:/opt/ws/install --network host ubuntu echo hi`
 <br> Attributes:
@@ -174,6 +176,7 @@ Command: `DOCKER_API_VERSION="1.41" docker run ubuntu echo hi`
     }
   ]
 ```
+---
 
 #### Basic Example of Port Mapping 
 
@@ -195,7 +198,6 @@ Command: `docker run -d -p 1883:1883 image`
   "repo_digest": "sha256:472bd0e78874eae1474552fe73876afa82a62cb2c6df393d3f03242b1a039fe5"
 }
 ```
----
 ---
 
 ### `docker compose`

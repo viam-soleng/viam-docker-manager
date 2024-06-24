@@ -301,6 +301,24 @@ func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest strin
 			if v, ok := value.(bool); ok {
 				hostConfig.AutoRemove = v
 			}
+		case "PortBindings":
+			if v, ok := value.([]interface{}); ok {
+				portBindings := nat.PortMap{}
+				for _, rawMapping := range v {
+					mappings, err := nat.ParsePortSpec(rawMapping.(string))
+					if err != nil {
+						dm.logger.Errorf("Error parsing port spec: %s", err)
+					}
+					for _, pm := range mappings {
+						portBindings[pm.Port] = []nat.PortBinding{pm.Binding}
+					}
+				}
+				dm.logger.Infof("PortBindings applied: %v", portBindings)
+				hostConfig.PortBindings = portBindings
+			} else {
+				dm.logger.Errorf("PortBindings value is not a string array")
+			}
+
 		default:
 			dm.logger.Errorf("No case for %s -- %s... won't be passed to container configuration", key, value)
 		}

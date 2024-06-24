@@ -301,23 +301,23 @@ func (dm *LocalDockerManager) CreateContainer(imageName string, repoDigest strin
 			if v, ok := value.(bool); ok {
 				hostConfig.AutoRemove = v
 			}
-			// TODO: Add PortBindings conversion
 		case "PortBindings":
-			portBindings := nat.PortMap{}
-			/* []string{
-				"0.0.0.0:2001-2006:8091-8096",
-				"0.0.0.0:11210-11211:11210-11211",
-			}*/
-			for _, rawMapping := range value.([]string) {
-				mappings, err := nat.ParsePortSpec(rawMapping)
-				if err != nil {
-					dm.logger.Errorf("Error parsing port spec: %s", err)
+			if v, ok := value.([]interface{}); ok {
+				portBindings := nat.PortMap{}
+				for _, rawMapping := range v {
+					mappings, err := nat.ParsePortSpec(rawMapping.(string))
+					if err != nil {
+						dm.logger.Errorf("Error parsing port spec: %s", err)
+					}
+					for _, pm := range mappings {
+						portBindings[pm.Port] = []nat.PortBinding{pm.Binding}
+					}
 				}
-				for _, pm := range mappings {
-					portBindings[pm.Port] = []nat.PortBinding{pm.Binding}
-				}
+				dm.logger.Infof("PortBindings applied: %v", portBindings)
+				hostConfig.PortBindings = portBindings
+			} else {
+				dm.logger.Errorf("PortBindings value is not a string array")
 			}
-			hostConfig.PortBindings = portBindings
 
 		default:
 			dm.logger.Errorf("No case for %s -- %s... won't be passed to container configuration", key, value)

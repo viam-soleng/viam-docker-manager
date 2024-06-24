@@ -143,7 +143,6 @@ Command: `docker run --rm --env ghcr.io/PATH/TO/PRIVATE/REPO:YOURTAGHERE sleep 1
 }
 ```
 ---
----
 
 #### Basic Example of Module Env Variable Setup 
 
@@ -175,8 +174,29 @@ Command: `DOCKER_API_VERSION="1.41" docker run ubuntu echo hi`
     }
   ]
 ```
----
 
+#### Basic Example of Port Mapping 
+
+Command: `docker run -d -p 1883:1883 image`
+<br> Component Attributes:
+```
+{
+  "run_options": {
+    "host_options": {
+      "Binds": "viam:/opt",
+      "NetworkMode": "default",
+      "PortBindings": [
+        "1883:1883"
+      ],
+      "AutoRemove": true
+    }
+  },
+  "image_name": "image:latest",
+  "repo_digest": "sha256:472bd0e78874eae1474552fe73876afa82a62cb2c6df393d3f03242b1a039fe5"
+}
+```
+---
+---
 
 ### `docker compose`
 

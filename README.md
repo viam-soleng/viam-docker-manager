@@ -189,7 +189,7 @@ Command: `docker run -d -p 1883:1883 image`
       "Binds": "viam:/opt",
       "NetworkMode": "default",
       "PortBindings": [
-        "1883:1883"
+        "1883:1883" // general format: e.g. "0.0.0.0:2001-2006:8091-8096"
       ],
       "AutoRemove": true
     }
